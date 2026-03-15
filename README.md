@@ -7,10 +7,14 @@ This module performs voxel-by-voxel mathematical operations to biologically sum 
 Companion web application: [RadComp on Streamlit](https://radcomp.streamlit.app)
 
 ## Features 🚀
+* **Fast Image Registration Wrapper:** Automated Rigid and Deformable (B-Spline) registration workflows using the BRAINSFit engine, eliminating the need to switch between multiple Slicer modules.
+* **Auto-Resampling Engine:** Automatically resamples the moving dose grid to perfectly match the reference geometry, preventing matrix dimension errors during biological accumulation.
+* **Smart UI Automation:** The module intelligently auto-selects the aligned volumes for the biological calculation step, reducing human error.
+* **Time-Corrected Radiobiology:** Full support for standard LQ model (BED and EQD2) with temporal recovery factors for accurate reirradiation assessment.
 * **Voxel-by-Voxel processing:** Operates directly on DICOM RTDOSE arrays using NumPy for high-performance biological conversion.
 * **Simultaneous Integrated Boost (SIB) support:** Automatically respects varying dose-per-fraction gradients within the same volume.
 * **Time-Based Recovery Factor:** Applies partial biological recovery discounts to the base plan based on the interval between treatments.
-* **Automated Visuals:** Instantly generates a clinical color wash overlay (Rainbow palette) with customizable transparency and a dynamic Scalar Bar.
+* **"Eclipse-Style"** Dose Wash: Custom dynamic color map transition (Dark Blue to Red) with a 2 Gy threshold and 40% opacity, replicating the familiar visual experience of commercial Treatment Planning Systems (TPS).
 * **Seamless SlicerRT Integration:** Output volumes are directly compatible with SlicerRT's Dose Volume Histogram (DVH) module.
 
 ## Installation 🛠️
