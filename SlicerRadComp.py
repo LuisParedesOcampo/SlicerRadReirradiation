@@ -14,12 +14,15 @@ from slicer.util import VTKObservationMixin
 class SlicerRadComp(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "RadComp Reirradiation analysis"  # Nombre que verás en Slicer
-        self.parent.categories = ["Radiotherapy"]  # Se creará esta categoría en el menú
-        self.parent.dependencies = []
-        self.parent.contributors = ["Luis Paredes, Clinical Medical Physicist "]
-        self.parent.helpText = "A clinical tool for Reirradiation calculations, visit the online version https://radcomp.streamlit.app ."
-        self.parent.acknowledgementText = "Basado en la librería radcomp."
+        self.parent.title = "RadComp: Reirradiation Analysis"
+        self.parent.categories = ["Radiotherapy", "Physics"]
+        self.parent.dependencies = ["SlicerRT"]
+        self.parent.contributors = ["Luis Paredes (Cali, Colombia) www.linkedin.com/in/lfparedes1"]
+        self.parent.helpText = """
+        This module allows for re-irradiation analysis through EQD2 dose calculation, study alignment, and integrated dosimetric metrics.
+        Visit: https://radcomp.streamlit.app .
+        """
+        self.parent.acknowledgementText = "Developed for the Medical Physics community."
 
 
 # ==========================================================
@@ -39,7 +42,7 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 1: FAST IMAGE REGISTRATION
         # ==========================================
         registrationCollapsibleButton = ctk.ctkCollapsibleButton()
-        registrationCollapsibleButton.text = "1. Fast Registration & Resample (Optional)"
+        registrationCollapsibleButton.text = "1. Image Registration & Dose Resample "
         registrationCollapsibleButton.collapsed = False  # Que inicie abierto
         self.layout.addWidget(registrationCollapsibleButton)
         registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
@@ -78,6 +81,12 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_dose_selector.setMRMLScene(slicer.mrmlScene)
         self.fixed_dose_selector.setToolTip("The Dosage of the NEW plan. Its geometric matrix will be used as a template.")
         registrationFormLayout.addRow("RTDOSE planned treatment RT2 (Fixed): ", self.fixed_dose_selector)
+
+        # Casilla para Registro Afín (Escala y Cizalladura)
+        self.affine_checkbox = qt.QCheckBox("Enable Affine Transform (Slower, high RAM)")
+        self.affine_checkbox.setChecked(False)
+        self.affine_checkbox.setToolTip("It adds 12 degrees of freedom. Ideal for skull or calibration differences between CTs, but it requires a lot of RAM.")
+        registrationFormLayout.addRow(self.affine_checkbox)
 
         # Casilla para Registro Deformable
         self.deformable_checkbox = qt.QCheckBox("Enable Deformable (B-Spline) Registration, It will take several minutes..")
@@ -183,6 +192,66 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Connect button to function
         self.applyButton.connect('clicked(bool)', self.onApplyButton)
 
+        # ==========================================================
+        # PANEL 3: ESTRUCTURAS Y VISUALIZACIÓN
+        # ==========================================================
+        structuresCollapsibleButton = ctk.ctkCollapsibleButton()
+        structuresCollapsibleButton.text = "3: Structures & Visualization"
+        self.layout.addWidget(structuresCollapsibleButton)
+        structuresFormLayout = qt.QFormLayout(structuresCollapsibleButton)
+
+        # 1. Selector del RTSTRUCT (Nodos de Segmentación)
+        self.rtstruct_selector = slicer.qMRMLNodeComboBox()
+        self.rtstruct_selector.nodeTypes = ["vtkMRMLSegmentationNode"]  # Filtra solo RTSTRUCTs
+        self.rtstruct_selector.selectNodeUponCreation = True
+        self.rtstruct_selector.addEnabled = False
+        self.rtstruct_selector.removeEnabled = False
+        self.rtstruct_selector.noneEnabled = True
+        self.rtstruct_selector.showHidden = False
+        self.rtstruct_selector.showChildNodeTypes = False
+        self.rtstruct_selector.setMRMLScene(slicer.mrmlScene)
+        self.rtstruct_selector.setToolTip("Selecciona el conjunto de estructuras (RTSTRUCT) de la RT Nueva.")
+        structuresFormLayout.addRow("RT2 Structures: ", self.rtstruct_selector)
+
+        # 2. Inyectar la Tabla Nativa de Segmentos de Slicer
+        self.segments_table = slicer.qMRMLSegmentsTableView()
+        self.segments_table.setMRMLScene(slicer.mrmlScene)
+        structuresFormLayout.addRow(self.segments_table)
+
+        # 3. Conectar el selector con la tabla
+        self.rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.onRTStructSelected)
+
+        # ==========================================================
+        # PANEL 4: ANÁLISIS DOSIMÉTRICO (EQD2 METRICS)
+        # ==========================================================
+        metricsCollapsibleButton = ctk.ctkCollapsibleButton()
+        metricsCollapsibleButton.text = "4: EQD2 Metrics & DVH"
+        self.layout.addWidget(metricsCollapsibleButton)
+        metricsFormLayout = qt.QFormLayout(metricsCollapsibleButton)
+
+        # Botón para calcular
+        self.calc_metrics_button = qt.QPushButton("Calculate Metrics EQD2")
+        self.calc_metrics_button.setStyleSheet(
+            "background-color: #9b59b6; color: white; font-weight: bold; padding: 5px;")
+        metricsFormLayout.addRow(self.calc_metrics_button)
+
+        # Tabla de resultados nativa
+        self.metrics_table = qt.QTableWidget()
+        self.metrics_table.setColumnCount(3)
+        self.metrics_table.setHorizontalHeaderLabels(["Estructure", "Max Dose (Gy)", "Mean Dose (Gy)"])
+        self.metrics_table.horizontalHeader().setSectionResizeMode(
+            qt.QHeaderView.Stretch)  # Ajusta las columnas al ancho
+        metricsFormLayout.addRow(self.metrics_table)
+
+        # --- EL  BOTÓN PARA EL DVH ---
+        self.plot_dvh_button = qt.QPushButton("Show DVH")
+        self.plot_dvh_button.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; padding: 5px;")
+        metricsFormLayout.addRow(self.plot_dvh_button)
+
+        # Conectar el botón a la función
+        self.calc_metrics_button.connect('clicked(bool)', self.onCalculateMetrics)
+        self.plot_dvh_button.connect('clicked(bool)', self.onGenerateDVH)
+
         # Empuja todo hacia arriba para que quede ordenado
         self.layout.addStretch(1)
 
@@ -221,8 +290,9 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         moving_dose = self.moving_dose_selector.currentNode()
         fixed_dose = self.fixed_dose_selector.currentNode()
 
-        # Leemos si el usuario quiere deformable
+        # Leemos si el usuario quiere deformable o affine
         use_deformable = self.deformable_checkbox.isChecked()
+        use_affine = self.affine_checkbox.isChecked()  # <
 
         if not fixed_ct or not moving_ct or not moving_dose:
             slicer.util.errorDisplay("Please select the two CTs and the Dose you wish to align.",
@@ -240,7 +310,7 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Llamamos a la lógica
             #self.logic.runFastRegistration(fixed_ct, moving_ct, moving_dose, fixed_dose, use_deformable)
             # 1. CAPTURAMOS el resultado del registro
-            aligned_dose_node = self.logic.runFastRegistration(fixed_ct, moving_ct, moving_dose, fixed_dose,use_deformable)
+            aligned_dose_node = self.logic.runFastRegistration(fixed_ct, moving_ct, moving_dose, fixed_dose,use_deformable,use_affine)
 
             # 2. MAGIA UX: Auto-asignamos los volúmenes a los selectores del PASO 2
             self.dose_a_selector.setCurrentNode(aligned_dose_node)
@@ -253,7 +323,172 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except Exception as e:
             slicer.util.errorDisplay(f"Error during image registration:\n{str(e)}", windowTitle="RadComp Error")
 
+    def onRTStructSelected(self, node):
+        """Conecta las estructuras a la tabla usando la visualización nativa de SlicerRT"""
+        if node:
+            # 1. Conectamos el nodo directamente a la tabla
+            self.segments_table.setSegmentationNode(node)
 
+            # 2. Aseguramos el interruptor maestro y ajustamos la estética clínica
+            display_node = node.GetDisplayNode()
+            if display_node:
+                display_node.SetVisibility(True)
+                display_node.SetVisibility2D(True)
+
+                # Ajustamos la opacidad para que no tape el mapa de calor de tu dosis
+                display_node.SetOpacity2DFill(0.3)
+                display_node.SetOpacity2DOutline(1.0)
+
+            slicer.util.showStatusMessage("Structures successfully linked to the table!")
+
+        else:
+            # Si se selecciona "None", vaciamos la tabla
+            self.segments_table.setSegmentationNode(None)
+
+    def onCalculateMetrics(self):
+        """Calcula Dmax y Dmean solo para las estructuras visibles en la tabla"""
+        import numpy as np
+
+        segmentation_node = self.rtstruct_selector.currentNode()
+        eqd2_nodes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"))
+        eqd2_dose_node = next((node for node in eqd2_nodes if "EQD2" in node.GetName()), None)
+
+        if not segmentation_node or not eqd2_dose_node:
+            slicer.util.warningDisplay("Make sure you have calculated the EQD2 dose and selected an RTSTRUCT.")
+            return
+
+        slicer.util.showStatusMessage("Calculating metrics for visible structures..")
+        slicer.app.processEvents()
+
+        segmentation = segmentation_node.GetSegmentation()
+        display_node = segmentation_node.GetDisplayNode()  # Acceso a los interruptores de visibilidad
+
+        self.metrics_table.setRowCount(0)
+        row = 0
+
+        for i in range(segmentation.GetNumberOfSegments()):
+            segment_id = segmentation.GetNthSegmentID(i)
+
+            # --- EL FILTRO DE SINCRONIZACIÓN ---
+            # Si el segmento está oculto en la interfaz, lo saltamos en la tabla
+            if display_node and not display_node.GetSegmentVisibility(segment_id):
+                continue
+
+            segment_name = segmentation.GetSegment(segment_id).GetName()
+
+            # Extracción de vóxeles (usando la dosis como molde de resolución)
+            segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id, eqd2_dose_node)
+            if segment_array is None: continue
+
+            dose_array = slicer.util.arrayFromVolume(eqd2_dose_node)
+            organ_dose_values = dose_array[segment_array > 0]
+
+            if len(organ_dose_values) > 0:
+                max_dose = np.max(organ_dose_values)
+                mean_dose = np.mean(organ_dose_values)
+            else:
+                max_dose = 0.0
+                mean_dose = 0.0
+
+            # Llenar la tabla
+            self.metrics_table.insertRow(row)
+            self.metrics_table.setItem(row, 0, qt.QTableWidgetItem(segment_name))
+
+            item_max = qt.QTableWidgetItem(f"{max_dose:.2f}")
+            item_max.setTextAlignment(qt.Qt.AlignCenter)
+            self.metrics_table.setItem(row, 1, item_max)
+
+            item_mean = qt.QTableWidgetItem(f"{mean_dose:.2f}")
+            item_mean.setTextAlignment(qt.Qt.AlignCenter)
+            self.metrics_table.setItem(row, 2, item_mean)
+
+            row += 1
+
+        slicer.util.showStatusMessage("Metrics table updated!")
+
+
+    def onGenerateDVH(self):
+        """Calcula el DVH solo para las estructuras que están visibles (con el ojo abierto)"""
+        import numpy as np
+        import vtk
+
+        segmentation_node = self.rtstruct_selector.currentNode()
+        eqd2_nodes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"))
+        eqd2_dose_node = next((node for node in eqd2_nodes if "EQD2" in node.GetName()), None)
+
+        if not segmentation_node or not eqd2_dose_node:
+            slicer.util.warningDisplay("Make sure you have the EQD2 map and RTSTRUCT selected.")
+            return
+
+        slicer.util.showStatusMessage("Generating DVH curves... Please wait.")
+        slicer.app.processEvents()
+
+        # 1. Crear el Lienzo del Gráfico
+        plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "DVH_EQD2_Chart")
+        plotChartNode.SetTitle("Dose-Volume Histogram (EQD2)")
+        plotChartNode.SetXAxisTitle("Dose EQD2 (Gy)")
+        plotChartNode.SetYAxisTitle("Relative Volume(%)")
+
+        segmentation = segmentation_node.GetSegmentation()
+        display_node = segmentation_node.GetDisplayNode()  # Necesitamos esto para ver los ojitos
+
+        # 2. Iterar por cada órgano
+        for i in range(segmentation.GetNumberOfSegments()):
+            segment_id = segmentation.GetNthSegmentID(i)
+
+            # --- EL FILTRO DE VISIBILIDAD ---
+            # Si el 'ojito' está apagado en la tabla, saltamos esta estructura
+            if display_node and not display_node.GetSegmentVisibility(segment_id):
+                continue
+
+            segment_name = segmentation.GetSegment(segment_id).GetName()
+            color = segmentation.GetSegment(segment_id).GetColor()
+
+            # Extraer vóxeles sincronizados con la dosis
+            segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id, eqd2_dose_node)
+            if segment_array is None: continue
+
+            dose_array = slicer.util.arrayFromVolume(eqd2_dose_node)
+            organ_dose_values = dose_array[segment_array > 0]
+            if len(organ_dose_values) == 0: continue
+
+            # Matemática del DVH
+            max_dose = np.max(organ_dose_values)
+            bins = np.arange(0, max_dose + 0.2, 0.1)
+            hist, edges = np.histogram(organ_dose_values, bins=bins)
+            cum_vol = np.cumsum(hist[::-1])[::-1]
+            cum_vol_percent = (cum_vol / cum_vol[0]) * 100.0
+
+            # Crear Tabla y Serie
+            tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", f"DVH_Table_{segment_name}")
+            dose_col = vtk.vtkDoubleArray();
+            dose_col.SetName("Dose")
+            vol_col = vtk.vtkDoubleArray();
+            vol_col.SetName("Volume")
+            for d, v in zip(bins[:-1], cum_vol_percent):
+                dose_col.InsertNextValue(d)
+                vol_col.InsertNextValue(v)
+            tableNode.AddColumn(dose_col);
+            tableNode.AddColumn(vol_col)
+
+            seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", segment_name)
+            seriesNode.SetAndObserveTableNodeID(tableNode.GetID())
+            seriesNode.SetXColumnName("Dose")
+            seriesNode.SetYColumnName("Volume")
+            seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+            seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleNone)
+            seriesNode.SetColor(color[0], color[1], color[2])
+
+            plotChartNode.AddAndObservePlotSeriesNodeID(seriesNode.GetID())
+
+        # 3. Mostrar Layout
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotView)
+        plotWidget = layoutManager.plotWidget(0)
+        plotViewNode = plotWidget.mrmlPlotViewNode()
+        plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
+
+        slicer.util.showStatusMessage("¡DVH Filtered Generated!")
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
@@ -262,66 +497,94 @@ class SlicerRadCompLogic(ScriptedLoadableModuleLogic):
     def __init__(self):
         ScriptedLoadableModuleLogic.__init__(self)
 
-    def runFastRegistration(self, fixed_ct, moving_ct, moving_dose, fixed_dose,use_deformable=False):
-        # 1. Crear un nodo contenedor para la matriz de transformación
-        transform_name = f"Transform_{moving_ct.GetName()}_to_{fixed_ct.GetName()}"
-       # transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", transform_name) #funciona para regisro rigido lienal
-        transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode", transform_name)
+    def runFastRegistration(self, fixed_ct, moving_ct, moving_dose, fixed_dose,use_deformable=False,use_affine=False):
+        # ==========================================================
+        # UX: INICIAR VENTANA DE CARGA Y CURSOR DE ESPERA
+        # ==========================================================
+        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)  # Cambia el ratón a reloj de arena
 
-        # 2. Configurar el motor BRAINSFit (Registro Rígido)
-        parameters = {
-            "fixedVolume": fixed_ct.GetID(),
-            "movingVolume": moving_ct.GetID(),
-           # "linearTransform": transformNode.GetID(),
-            "useRigid": True,  # Siempre hace un pre-alineamiento rígido
-            "initializeTransformMode": "useGeometryAlign",  # Alinea usando el centro geométrico inicial
-            "maskProcessingMode": "NOMASK"
-        }
+        # Creamos una barra de progreso "infinita" (maximum=0)
+        progress = slicer.util.createProgressDialog(
+            parent=slicer.util.mainWindow(),
+            labelText="Calculating Image Registration......\nPlease wait, Slicer will appear frozen for a couple of minutes.",
+            windowTitle="RadComp Processing",
+            value=0, maximum=0
+        )
+        progress.show()
+        slicer.app.processEvents()  # Vital: Fuerza a Slicer a dibujar la ventana antes de congelarse
 
-        if use_deformable:
-            parameters["bsplineTransform"] = transformNode.GetID()  # Canal elástico
-            parameters["useBSpline"] = True
-            parameters["splineGridSize"] = [3, 3, 3]  # Lista nativa de Python
-        else:
-            parameters["linearTransform"] = transformNode.GetID()  # Canal rígido
+        try:
 
+            # 1. Crear un nodo contenedor para la matriz de transformación
+            transform_name = f"Transform_{moving_ct.GetName()}_to_{fixed_ct.GetName()}"
+            # transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", transform_name) #funciona para regisro rigido lienal
+            transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode", transform_name)
 
-        # Ejecutar en modo síncrono (congela la pantalla unos segundos hasta que termina)
-        brainsFit = slicer.modules.brainsfit
-        cliNode = slicer.cli.runSync(brainsFit, None, parameters)
+            # 2. Configurar el motor BRAINSFit (Registro Rígido)
+            parameters = {
+                "fixedVolume": fixed_ct.GetID(),
+                "movingVolume": moving_ct.GetID(),
+                # "linearTransform": transformNode.GetID(),
+                "useRigid": True,  # Siempre hace un pre-alineamiento rígido
+               # "useAffine": True,  #  Escalar y cizallar (12 DoF)
+                "initializeTransformMode": "useMomentsAlign",  # Alinea los centros de masa de densidad,
+                "maskProcessingMode": "NOMASK",
+               # "samplingPercentage": 0.02
+            }
+            if use_affine:
+                parameters["useAffine"] = True
+                parameters["samplingPercentage"] = 0.02  # El salvavidas de RAM
 
-        if cliNode.GetStatus() & cliNode.ErrorsMask:
-            raise ValueError("The image registration engine (BRAINSFit) failed.")
+            if use_deformable:
+                parameters["bsplineTransform"] = transformNode.GetID()  # Canal elástico
+                parameters["useBSpline"] = True
+                parameters["splineGridSize"] = [7, 7, 7]  # Malla elástica de alta resolución
+            else:
+                parameters["linearTransform"] = transformNode.GetID()  # Canal rígido
 
-        #  Remuestrear la Dosis (BRAINSResample)
-        output_dose_name = f"{moving_dose.GetName()}_Aligned"
-        volumesLogic = slicer.modules.volumes.logic()
+            # Ejecutar en modo síncrono (congela la pantalla unos segundos hasta que termina)
+            brainsFit = slicer.modules.brainsfit
+            cliNode = slicer.cli.runSync(brainsFit, None, parameters)
 
-        # Clonamos el 'envase' de la Dosis Nueva (fixed_dose) para tener su tamaño exacto
-        outputDose = volumesLogic.CloneVolume(slicer.mrmlScene, fixed_dose, output_dose_name)
-        outputDose.SetAttribute("DICOM.Modality", "RTDOSE")
+            if cliNode.GetStatus() & cliNode.ErrorsMask:
+                raise ValueError("The image registration engine (BRAINSFit) failed.")
 
-        resample_params = {
-            "inputVolume": moving_dose.GetID(),
-            "referenceVolume": fixed_dose.GetID(),
-            "outputVolume": outputDose.GetID(),
-            "warpTransform": transformNode.GetID(),
-            "interpolationMode": "Linear",  # Interpolación lineal para dosis continuas
-            "pixelType": "float"
-        }
+            #  Remuestrear la Dosis (BRAINSResample)
+            output_dose_name = f"{moving_dose.GetName()}_Aligned"
+            volumesLogic = slicer.modules.volumes.logic()
 
-        brainsResample = slicer.modules.brainsresample
-        cliNodeResample = slicer.cli.runSync(brainsResample, None, resample_params)
+            # Clonamos el 'envase' de la Dosis Nueva (fixed_dose) para tener su tamaño exacto
+            outputDose = volumesLogic.CloneVolume(slicer.mrmlScene, fixed_dose, output_dose_name)
+            outputDose.SetAttribute("DICOM.Modality", "RTDOSE")
 
-        if cliNodeResample.GetStatus() & cliNodeResample.ErrorsMask:
-            raise ValueError("The Dose resample (BRAINSResample) failed.")
+            resample_params = {
+                "inputVolume": moving_dose.GetID(),
+                "referenceVolume": fixed_dose.GetID(),
+                "outputVolume": outputDose.GetID(),
+                "warpTransform": transformNode.GetID(),
+                "interpolationMode": "Linear",  # Interpolación lineal para dosis continuas
+                "pixelType": "float"
+            }
 
-        # 1. Le aplicamos la matriz espacial calculada al CT Viejo
-        moving_ct.SetAndObserveTransformNodeID(transformNode.GetID())
-        # 2. Le decimos a Slicer que ponga el CT Nuevo de fondo, el Viejo encima, al 50% de transparencia
-        slicer.util.setSliceViewerLayers(background=fixed_ct, foreground=moving_ct, foregroundOpacity=0.5)
+            brainsResample = slicer.modules.brainsresample
+            cliNodeResample = slicer.cli.runSync(brainsResample, None, resample_params)
 
-        return outputDose
+            if cliNodeResample.GetStatus() & cliNodeResample.ErrorsMask:
+                raise ValueError("The Dose resample (BRAINSResample) failed.")
+
+            # 1. Le aplicamos la matriz espacial calculada al CT Viejo
+            moving_ct.SetAndObserveTransformNodeID(transformNode.GetID())
+            # 2. Le decimos a Slicer que ponga el CT Nuevo de fondo, el Viejo encima, al 50% de transparencia
+            slicer.util.setSliceViewerLayers(background=fixed_ct, foreground=moving_ct, foregroundOpacity=0.5)
+
+            return outputDose
+        finally:
+            # ==========================================================
+            # UX: RESTAURAR INTERFAZ (Incluso si hay un error)
+            # ==========================================================
+            progress.close()
+            slicer.app.restoreOverrideCursor()  # Regresa el cursor a la normalidad
+
 
     def procesarDosis(self, dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months, custom_name=""):
         import numpy as np
@@ -382,7 +645,7 @@ class SlicerRadCompLogic(ScriptedLoadableModuleLogic):
         eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
         slicer.util.updateVolumeFromArray(eqd2_node, eqd2_total)
 
-        # --- PASO E: AUTOMATIZACIÓN VISUAL (MAGIA UI) ---
+        # --- PASO E: AUTOMATIZACIÓN VISUAL ---
         # 1. Encontrar la dosis máxima para escalar los colores automáticamente
         dosis_maxima = np.max(eqd2_total)
 
