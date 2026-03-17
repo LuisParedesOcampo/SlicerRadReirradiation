@@ -1,13 +1,10 @@
 # SlicerRadComp 🧬
 
-A clinical tool for 3D Slicer that calculates biologically effective dose (BED) and equivalent dose in 2 Gy fractions (EQD2) for radiotherapy plan accumulation and reirradiation analysis. 
+A clinical tool for 3D Slicer that calculates biologically effective dose (BED) and equivalent dose in 2 Gy fractions (EQD2) for radiotherapy reirradiation analysis. 
 
 This module performs voxel-by-voxel mathematical operations to biologically sum multiple radiation courses, applying time-based recovery factors, and returns a fully integrated EQD2 volume for clinical analysis (DVH).
 
-Companion web application: [RadComp on Streamlit](https://radcomp.streamlit.app)
-
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
-
 
 ## Features 🚀
 * **Fast Image Registration Wrapper:** Automated Rigid and Deformable (B-Spline) registration workflows using the BRAINSFit engine, eliminating the need to switch between multiple Slicer modules.
