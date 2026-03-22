@@ -42,7 +42,7 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 1: FAST IMAGE REGISTRATION
         # ==========================================
         registrationCollapsibleButton = ctk.ctkCollapsibleButton()
-        registrationCollapsibleButton.text = "1. Image Registration and Dose Resample "
+        registrationCollapsibleButton.text = "Image Registration and Dose Resample "
         registrationCollapsibleButton.collapsed = False  # Que inicie abierto
         self.layout.addWidget(registrationCollapsibleButton)
         registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
@@ -298,9 +298,21 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.plot_dvh_button.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; padding: 5px;")
         metricsFormLayout.addRow(self.plot_dvh_button)
 
+        # --- Botón de Exportación DICOM ---
+        self.exportButton = qt.QPushButton("Export EQD2 to DICOM ")
+        self.exportButton.toolTip = "Exports the calculated EQD2 dose with the original patient's DICOM tags."
+        self.exportButton.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 5px;")
+        self.exportButton.enabled = False  # Nace apagado hasta que se calcule la dosis
+
+        # Asumiendo que parametersFormLayout es el layout donde tienes tus botones principales
+        # Ajusta el nombre del layout si lo llamaste diferente en esta sección
+        metricsFormLayout.addRow(self.exportButton)
+
+
         # Conectar el botón a la función
         self.calc_metrics_button.connect('clicked(bool)', self.onCalculateMetrics)
         self.plot_dvh_button.connect('clicked(bool)', self.onGenerateDVH)
+        self.exportButton.connect('clicked(bool)', self.onExportDICOMClicked)
 
         # Empuja todo hacia arriba para que quede ordenado
         self.layout.addStretch(1)
@@ -375,7 +387,7 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sliderZ.blockSignals(True)
             self.sliderX.value = 0;
             self.sliderY.value = 0;
-            self.sliderZ.value = 0
+            self.sliderZ.value = 0;
             self.sliderX.blockSignals(False);
             self.sliderY.blockSignals(False);
             self.sliderZ.blockSignals(False)
@@ -435,7 +447,12 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
 
             # ¡Llamamos a la magia!
-            self.logic.procesarDosis(dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months,custom_name)
+            resultado =self.logic.procesarDosis(dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months,custom_name)
+
+            # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
+            self.eqd2_node = resultado  # (Asegúrate de usar el mismo nombre de la variable de arriba)
+            # Encendemos el botón verde de exportar
+            self.exportButton.enabled = True
 
             slicer.util.showStatusMessage("¡Calculation completed!")
             slicer.util.infoDisplay("¡Cálculation of accumulated EQD2 completed con successfully!", windowTitle="RadComp")
@@ -694,6 +711,44 @@ class SlicerRadCompWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.util.showStatusMessage("¡DVH Successfully generated!")
 
+    def onExportDICOMClicked(self):
+        fixed_ct = self.fixed_ct_selector.currentNode()
+        fixed_dose = self.fixed_dose_selector.currentNode()
+
+        if not hasattr(self, 'eqd2_node') or not self.eqd2_node:
+            slicer.util.warningDisplay("Please calculate the EQD2 dose first.")
+            return
+
+        try:
+            shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            eqd2_item_id = shNode.GetItemByDataNode(self.eqd2_node)
+            fixed_ct_item_id = shNode.GetItemByDataNode(fixed_ct)
+
+            # 1. Copiar el "ADN" de la dosis original
+            attrNames = fixed_dose.GetAttributeNames()
+            if attrNames:
+                for attrName in attrNames:
+                    if attrName.startswith("DICOM."):
+                        self.eqd2_node.SetAttribute(attrName, fixed_dose.GetAttribute(attrName))
+
+            self.eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
+            self.eqd2_node.SetAttribute("DICOM.SeriesDescription", "RadComp_EQD2_Sum")
+            self.eqd2_node.RemoveAttribute("DICOM.instanceUIDs")
+
+            # 2. Mover la Dosis para que sea "hermana" exacta del CT en la carpeta del paciente
+            parent_item_id = shNode.GetItemParent(fixed_ct_item_id)
+            shNode.SetItemParent(eqd2_item_id, parent_item_id)
+            shNode.SetItemAttribute(eqd2_item_id, "DICOM.Modality", "RTDOSE")
+
+            # 3. Abrir ventana de exportación
+            slicer.modules.dicom.widgetRepresentation()
+            exportDialog = slicer.qSlicerDICOMExportDialog(None)
+            exportDialog.setMRMLScene(slicer.mrmlScene)
+            exportDialog.execDialog()
+
+        except Exception as e:
+            slicer.util.errorDisplay(f"Export Error: {str(e)}")
+
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
@@ -923,6 +978,7 @@ class SlicerRadCompLogic(ScriptedLoadableModuleLogic):
 
         # 5. Inyectar automáticamente el mapa de calor sobre las vistas 2D
         slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
+
 
         # 6. CREAR Y MOSTRAR LA LEYENDA (SCALAR BAR)
         try:
