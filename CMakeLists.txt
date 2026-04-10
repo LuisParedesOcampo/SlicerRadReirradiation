@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16.3...3.19.1 FATAL_ERROR)
-project(SlicerRadComp)
+project(RadComp)
 
 # Meta-informacion de la extension
 set(EXTENSION_HOMEPAGE "https://radcomp.streamlit.app")
@@ -14,7 +14,7 @@ find_package(Slicer REQUIRED)
 include(${Slicer_USE_FILE})
 
 slicerMacroBuildScriptedModule(
-  NAME SlicerRadComp
+  NAME RadComp
   SCRIPTS
     SlicerRadComp.py
   RESOURCES
