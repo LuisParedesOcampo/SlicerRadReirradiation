@@ -1,8 +1,8 @@
 # SlicerRadComp 🧬
 
-A clinical tool for 3D Slicer that calculates biologically effective dose (BED) and equivalent dose in 2 Gy fractions (EQD2) for radiotherapy reirradiation analysis. 
+### Radiotherapy Re-irradiation Analysis and Biological Dose Summation in 3D Slicer
 
-This module performs voxel-by-voxel mathematical operations to biologically sum multiple radiation courses, applying time-based recovery factors, and returns a fully integrated EQD2 volume for clinical analysis (DVH).
+**RadComp** utilizes the **Linear-Quadratic (LQ)** model to perform voxel-by-voxel calculations of Biologically Effective Dose (BED) and EQD2 (Equivalent Dose in 2 Gy fractions), enabling precise evaluation of the accumulated dose in critical structures and tumor volumes (DVH).
 
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
 
@@ -21,12 +21,29 @@ This module performs voxel-by-voxel mathematical operations to biologically sum 
 * **Dosimetric Analysis:** Metrics table (Dmax, Dmean) synchronized with structure visibility.
 *  **DVH Generation:** Generation of interactive DVH curves within the Slicer.
 
+## 📚 Scientific Foundation and References
+The development of RadComp is based on international standards for reporting and accumulating biological doses.
+
+### Reference Publication (RadComp)
+* **Status:** In Preparation. 
+* *Note:* Once the specific scientific article for this tool is published, this section will be updated with a direct link to PubMed/the corresponding Journal.
+
+### Background Literature and Consensus
+This module formally implements the concepts discussed in the following key publications:
+1. **ReCOG Consensus (2024):** *Reirradiation Collaborative Group (ReCOG) consensus on
+standards for dose evaluation and reporting in patients with
+multiple courses of radiation therapy:*. [https://pubmed.ncbi.nlm.nih.gov/41643699/]
+2. **Nieder et al. (2017/2018):** Second re-irradiation: a narrative review of the available clinical data*. [https://pubmed.ncbi.nlm.nih.gov/29187033/]
+3. **Nieder et al. (2017/2018):** Repeat reirradiation of the spinal cord: multi-national expert treatment
+recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
+
 ## Installation 🛠️
 1. Download or clone this repository to your local machine.
 2. Open 3D Slicer.
 3. In 3D Slicer, go to **Developer Tools** -> **Extension Wizard**.
 4. Click **Select Extension** and choose the folder where you downloaded this code..
 5. Restart 3D Slicer. The module will now appear under the **Radiotherapy** category.
+6. **Recommended Dependency:** It is highly recommended to have **SlicerRT** installed for the seamless importation and handling of DICOM-RT objects.
 
 ## Disclaimer ⚠️
 **This software is for research and educational purposes only and has not been cleared for clinical use by any regulatory body (FDA, CE, etc.).**
