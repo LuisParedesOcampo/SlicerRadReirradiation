@@ -24,7 +24,7 @@
 ## 📚 Scientific Foundation and References
 The development of RadReirradiation is based on international standards for reporting and accumulating biological doses.
 
-### Reference Publication (RadComp)
+### Reference Publication (RadReirradiation)
 * **Status:** In Preparation. 
 * *Note:* Once the specific scientific article for this tool is published, this section will be updated with a direct link to PubMed/the corresponding Journal.
 
