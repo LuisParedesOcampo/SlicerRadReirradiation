@@ -1,8 +1,8 @@
-# SlicerRadComp 🧬
+# RadReirradiation 🧬
 
 ### Radiotherapy Re-irradiation Analysis and Biological Dose Summation in 3D Slicer
 
-**RadComp** utilizes the **Linear-Quadratic (LQ)** model to perform voxel-by-voxel calculations of Biologically Effective Dose (BED) and EQD2 (Equivalent Dose in 2 Gy fractions), enabling precise evaluation of the accumulated dose in critical structures and tumor volumes (DVH).
+**RadReirradiation** utilizes the **Linear-Quadratic (LQ)** model to perform voxel-by-voxel calculations of Biologically Effective Dose (BED) and EQD2 (Equivalent Dose in 2 Gy fractions), enabling precise evaluation of the accumulated dose in critical structures and tumor volumes (DVH).
 
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
 
@@ -22,7 +22,7 @@
 *  **DVH Generation:** Generation of interactive DVH curves within the Slicer.
 
 ## 📚 Scientific Foundation and References
-The development of RadComp is based on international standards for reporting and accumulating biological doses.
+The development of RadReirradiation is based on international standards for reporting and accumulating biological doses.
 
 ### Reference Publication (RadComp)
 * **Status:** In Preparation. 
