@@ -138,9 +138,41 @@ After the registration is complete, it is highly recommended to perform a visual
 
 <img width="1846" height="889" alt="13" src="https://github.com/user-attachments/assets/15ca65fe-f9af-4316-ae5f-793881cdfea1" />
 
+**3. Reirradiation Caulculation settings and DVH Evaluation**
+
+With the CT images already registered, the extension streamlines your workflow. Thanks to the image registration algorithm, the newly registered and mapped to the current anatomy: Previous RT Dose (RD PREVIOUS_Registered) is automatically loaded in the module, saving you manual steps and reducing setup errors.
+
+<img width="522" height="260" alt="14" src="https://github.com/user-attachments/assets/14cf11d0-463d-4570-bf56-0927a8b9b411" />
+
+**Reirradiation Settngs:**
+
+* Adjust the Alpha/Beta (α/β) ratios according to the specific tissue or tumor being evaluated.
+     * ⚠️ Important Clinical Note: Currently, the module performs the biological summation using a single global alpha/beta ratio per calculation. If you want to evaluate late effects on Organs at Risk (OARs), set the ratio to e.g. 3 and calculate. To evaluate tumor control, you will need to change the ratio to e.g. 10 and run a new calculation, is not necessary to perform the image registration and all the previous steps, just change the alpha/beta and click the Calculate button. (Note: A future update is currently in development to allow structure-specific alpha/beta assignments).
+* Enter the number of fractions for the previous and current treatment.
+* Time-Discount Factor (Partial Recovery): If you consider it necessary to apply a dose discount factor, you can enable the "Time Discount" option. This feature accounts for the partial biological recovery of healthy tissues over time. Based on the selected elapsed time, the module applies a specific dose reduction factor to the previous treatment before the final summation: (Note: These factors are based on Nieder C, Grosu AL, Andratschke NH, Molls M. Update of human spinal cord reirradiation tolerance based on additional data from 38 patients [https://pubmed.ncbi.nlm.nih.gov/17084560/] and provide a more realistic biological estimation).
+
+     * 0 to 6 months: No recovery assumed. 0% discount is applied (100% of the previous dose is considered).
+     * 6 to 12 months: Partial recovery assumed. A 25%  discount factor is applied. (75 % of the previous dose is considered).
+     * 12 to 24 months: Advanced recovery assumed. A 50% discount factor is applied. (50 % of the previous dose is considered).
+     * 24 to X months: Prolonged recovery assumed. A 65 % discount factor is applied. (35 % of the previous dose is considered).
+     
+* Click the "Calculate Cumulative EQD2 Dose" button.
+
+<img width="522" height="260" alt="15" src="https://github.com/user-attachments/assets/2f5e7027-0e84-4a60-a4e1-c1b0cff8c820" />
+
+**4 Visualizing the Results:**
+
+Once the calculation is complete, the extension generates a new biologically equivalent dose volume (EQD2).  Eclipse-Style Dose Wash: Slicer will automatically apply a dynamic color heatmap (with a Scalar Bar) to the generated dose.
+<img width="1902" height="886" alt="16" src="https://github.com/user-attachments/assets/74ab0f5a-f78b-4986-93f9-e0b3b2560bb5" />
+
+Structure Visualization (The "Eye" Icon): To actually see your contours overlaid on the CT and the dose wash, navigate to the RadReirradiation module 2 (Structure visualization). use the current Structure Set (e.g. RS CURRENT) , expand the list, and toggle the "eye" icon next to each specific structure (e.g., Spinal Cord, Brainstem, PTV) you wish to display in the 2D and 3D views.
+
+<img width="1901" height="884" alt="17" src="https://github.com/user-attachments/assets/07cec322-7b62-4406-b703-9c8fc56ab1db" />
 
 
 
+
+DVH Analytics: To get quantitative metrics, switch to the native SlicerRT Dose Volume Histogram (DVH) module. Select your new EQD2 volume and your RT Structure Set to visualize the accumulated dose limits and ensure clinical safety constraints are met.
 
 
 
