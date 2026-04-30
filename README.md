@@ -33,7 +33,7 @@ This module formally implements the concepts discussed in the following key publ
 1. **ReCOG Consensus (2024):** *Reirradiation Collaborative Group (ReCOG) consensus on
 standards for dose evaluation and reporting in patients with
 multiple courses of radiation therapy:*. [https://pubmed.ncbi.nlm.nih.gov/41643699/]
-2. **Nieder et al. (2017/2018):** Second re-irradiation: a narrative review of the available clinical data*. [https://pubmed.ncbi.nlm.nih.gov/29187033/]
+2. **Nieder et al. (2017/2018):** Second re-irradiation: a narrative review of the available clinical data. [https://pubmed.ncbi.nlm.nih.gov/29187033/]
 3. **Nieder et al. (2017/2018):** Repeat reirradiation of the spinal cord: multi-national expert treatment
 recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
 
@@ -44,6 +44,15 @@ recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
 4. Click **Select Extension** and choose the folder where you downloaded this code..
 5. Restart 3D Slicer. The module will now appear under the **Radiotherapy** category.
 6. **Recommended Dependency:** It is highly recommended to have **SlicerRT** installed for the seamless importation and handling of DICOM-RT objects.
+
+## Step-by-step tutorial 🛠️
+To perform an accurate re-irradiation analysis, you must export two complete datasets from your Treatment Planning System (TPS): the Previous Treatment and the Current/Planned Treatment.
+Export Requirements (from your TPS):
+* CT Images (CT)
+* RT Doses (RD)
+* RT Structure Sets (RS)
+* Optional but recommended: RT Plans (RP)
+
 
 ## Disclaimer ⚠️
 **This software is for research and educational purposes only and has not been cleared for clinical use by any regulatory body (FDA, CE, etc.).**
