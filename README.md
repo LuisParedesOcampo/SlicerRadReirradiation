@@ -46,6 +46,9 @@ recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
 6. **Recommended Dependency:** It is highly recommended to have **SlicerRT** installed for the seamless importation and handling of DICOM-RT objects.
 
 ## Step-by-step tutorial 🛠️
+
+**1. Data Preparation: From TPS to 3D Slicer**
+
 To perform an accurate re-irradiation analysis, you must export two complete datasets from your Treatment Planning System (TPS): the Previous (1) Treatment and the Current/Planned Treatment (2).
 
 <img width="679" height="266" alt="0" src="https://github.com/user-attachments/assets/4493ec9f-dac8-485c-b845-ac161f34d67d" />
@@ -78,6 +81,28 @@ Since TPS exports often generate generic names (In this example, the RTDOSE file
 <img width="1130" height="285" alt="7" src="https://github.com/user-attachments/assets/58de03d2-7cf9-46bb-9243-8ed392857d68" />
 
 
+**2. Loading Data and Smart Alignment**
+
+Once your DICOM data is properly imported and organized in 3D Slicer, it is time to load it into the extension to coregister the previous treatment with the current patient anatomy.
+
+Launching the Module:
+
+* Open the module dropdown menu (usually displaying "Welcome to Slicer").
+* Navigate to Radiotherapy and select RadReirradiation.
+
+<img width="1170" height="981" alt="8" src="https://github.com/user-attachments/assets/d06ce3f6-5496-48ed-8806-f3d7d5e557d9" />
+
+
+**Assigning Volumes:**
+
+In the Data Selection panel, carefully assign your loaded volumes to their corresponding roles:
+* Moving CT / Previous CT: The historical anatomy that needs to be registered.
+* Reference CT / Current CT: The anatomy where the final dose summation will be evaluated.
+
+<img width="558" height="404" alt="9" src="https://github.com/user-attachments/assets/0046bbba-1e01-46c1-a258-09f755fe0442" />
+
+
+Do the same for the RT Dose volumes.
 
 
 
