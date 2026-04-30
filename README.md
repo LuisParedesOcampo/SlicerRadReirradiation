@@ -160,19 +160,26 @@ With the CT images already registered, the extension streamlines your workflow. 
 
 <img width="522" height="260" alt="15" src="https://github.com/user-attachments/assets/2f5e7027-0e84-4a60-a4e1-c1b0cff8c820" />
 
-**4 Visualizing the Results:**
+**4 Visualizing the Results and DVH Analytics:**
 
 Once the calculation is complete, the extension generates a new biologically equivalent dose volume (EQD2).  Eclipse-Style Dose Wash: Slicer will automatically apply a dynamic color heatmap (with a Scalar Bar) to the generated dose.
 <img width="1902" height="886" alt="16" src="https://github.com/user-attachments/assets/74ab0f5a-f78b-4986-93f9-e0b3b2560bb5" />
 
-Structure Visualization (The "Eye" Icon): To actually see your contours overlaid on the CT and the dose wash, navigate to the RadReirradiation module 2 (Structure visualization). use the current Structure Set (e.g. RS CURRENT) , expand the list, and toggle the "eye" icon next to each specific structure (e.g., Spinal Cord, Brainstem, PTV) you wish to display in the 2D and 3D views.
+**Structure Visualization (The "Eye" Icon):**
+
+To actually see your contours overlaid on the CT and the dose wash, navigate to the RadReirradiation module 2 (Structure visualization). use the current Structure Set (e.g. RS CURRENT) , expand the list, and toggle the "eye" icon next to each specific structure (e.g., Spinal Cord, Brainstem, PTV) you wish to display in the 2D and 3D views.
 
 <img width="1901" height="884" alt="17" src="https://github.com/user-attachments/assets/07cec322-7b62-4406-b703-9c8fc56ab1db" />
 
+**EQD2 Metrics table and DVH:**
+
+The module automatically generates a comprehensive metrics table and DVH based on your visualization settings. Important: This table and DVH evaluates only the structures that are currently visible (those with the "eye" icon left open). For these selected structures, the algorithm calculates and displays the Maximum Dose (DMax) and Mean Dose (DMean) of the accumulated EQD2 and generate the Dose-Volume Histogram (DVH) plot for the accumulated EQD2 dose (based on your selected α/β ratio), allowing you to quickly verify clinical safety constraints.
+
+<img width="1915" height="879" alt="18" src="https://github.com/user-attachments/assets/b8e51900-a4de-4a1a-988d-ca7fe77b7299" />
+<img width="1916" height="881" alt="25" src="https://github.com/user-attachments/assets/8c90bd28-3443-458d-85bf-2af904794046" />
 
 
 
-DVH Analytics: To get quantitative metrics, switch to the native SlicerRT Dose Volume Histogram (DVH) module. Select your new EQD2 volume and your RT Structure Set to visualize the accumulated dose limits and ensure clinical safety constraints are met.
 
 
 
@@ -183,5 +190,6 @@ DVH Analytics: To get quantitative metrics, switch to the native SlicerRT Dose V
 **This software is for research and educational purposes only and has not been cleared for clinical use by any regulatory body (FDA, CE, etc.).**
 The user assumes all responsibility for the interpretation and clinical application of the results provided by this tool. Calculations must be independently verified by a certified Medical Physicist or Radiation Oncologist before any clinical decision.
 
-**Autor:** Luis Paredes, Clinical Medical Physicist (Cali, Colombia).
+**Autor:** Luis Paredes, Clinical Medical Physicist (Cali, Colombia), [www.linkedin.com/in/lfparedes1].
+
 **Web version:** [radcomp.streamlit.app](https://radcomp.streamlit.app)
