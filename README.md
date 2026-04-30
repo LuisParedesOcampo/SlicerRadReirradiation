@@ -64,11 +64,19 @@ Succesfull exportation of the previous treatmet, repeat the same steps for the c
 
 **Importing into 3D Slicer:**
 
-Ensure you have the SlicerRT extension installed. It is a mandatory requirement to read and process Radiotherapy DICOM files. Drag and drop your exported DICOM folders into the 3D Slicer application or use the native DICOM Browser.
-Crucial Step: When the DICOM import window appears, ensure the "eye" icon next to your RT Structures is toggled ON (visible). If this icon is closed, the structures will not be loaded into the scene and cannot be evaluated.
+Ensure you have the SlicerRT extension installed. It is a mandatory requirement to read and process Radiotherapy DICOM files. Drag and drop your exported DICOM folders into the 3D Slicer application or use the native DICOM Browser and click on Examine button.
 
 <img width="1202" height="772" alt="3" src="https://github.com/user-attachments/assets/c8e57085-13bf-4b7d-af89-d7e2dae9fa4e" />
+<img width="1916" height="995" alt="4" src="https://github.com/user-attachments/assets/79303f7a-ca0d-4811-878f-30696658eed1" />
+Once the DICOM files are loaded only check the TAC, RD and RS of the previous and current treatmets. RP is optional; it is not used in this version but will be used in future developments.  
+<img width="1380" height="245" alt="5" src="https://github.com/user-attachments/assets/38ab86dd-faa9-4899-9f4b-1a3d6b8b107d" />
 
+
+
+
+
+
+Crucial Step: When the DICOM import window appears, ensure the "eye" icon next to your RT Structures is toggled ON (visible). If this icon is closed, the structures will not be loaded into the scene and cannot be evaluated.
 
 Data Organization Tip:
 Since TPS exports often generate generic names, it is highly recommended to open the Data module in Slicer and rename your loaded volumes immediately (e.g., rename them to CT_Previous, CT_Current, Dose_Previous, Dose_Current). This will prevent confusion when assigning volumes in the RadReirradiation module.
