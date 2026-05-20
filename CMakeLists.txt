@@ -14,7 +14,7 @@ find_package(Slicer REQUIRED)
 include(${Slicer_USE_FILE})
 
 slicerMacroBuildScriptedModule(
-  NAME RadComp
+  NAME RadReirradiation
   SCRIPTS
     RadReirradiation.py
   RESOURCES
