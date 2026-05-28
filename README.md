@@ -45,7 +45,26 @@ recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
 5. Restart 3D Slicer. The module will now appear under the **Radiotherapy** category.
 6. **Recommended Dependency:** It is highly recommended to have **SlicerRT** installed for the seamless importation and handling of DICOM-RT objects.
 
+## 📹 Video Tutorial
+
+A complete step-by-step tutorial is available on YouTube, 
+covering the full reirradiation analysis workflow:
+
+- Installation and DICOM RT data preparation
+- Image registration (Rigid, Affine & Deformable)
+- Auto-Center tool for CBCT field-of-view correction
+- EQD2/BED biological dose accumulation (α/β = 3 and 10 Gy)
+- DVH analysis and dosimetric metrics (Dmax, Dmean)
+
+[![RadReirradiation Tutorial](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=xFspmJT0Wr8)
+
+> 💡 **Tip:** You can switch between α/β = 3 Gy (OARs) and 
+> α/β = 10 Gy (tumor) without repeating the image 
+> registration — just change the parameter and click Calculate.
+
 ## Step-by-step tutorial 🛠️
+
+https://www.youtube.com/watch?v=xFspmJT0Wr8
 
 **1. Data Preparation: From TPS to 3D Slicer**
 
