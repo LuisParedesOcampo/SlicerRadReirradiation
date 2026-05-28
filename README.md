@@ -56,7 +56,7 @@ covering the full reirradiation analysis workflow:
 - EQD2/BED biological dose accumulation (α/β = 3 and 10 Gy)
 - DVH analysis and dosimetric metrics (Dmax, Dmean)
 
-[![RadReirradiation Tutorial](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=xFspmJT0Wr8)
+[![RadReirradiation Tutorial](https://img.youtube.com/vi/xFspmJT0Wr8/maxresdefault.jpg)](https://www.youtube.com/watch?v=xFspmJT0Wr8)
 
 > 💡 **Tip:** You can switch between α/β = 3 Gy (OARs) and 
 > α/β = 10 Gy (tumor) without repeating the image 
