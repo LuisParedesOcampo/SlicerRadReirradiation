@@ -37,13 +37,44 @@ multiple courses of radiation therapy:*. [https://pubmed.ncbi.nlm.nih.gov/416436
 3. **Nieder et al. (2017/2018):** Repeat reirradiation of the spinal cord: multi-national expert treatment
 recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
 
-## Installation 🛠️
-1. Download or clone this repository to your local machine.
-2. Open 3D Slicer.
-3. In 3D Slicer, go to **Developer Tools** -> **Extension Wizard**.
-4. Click **Select Extension** and choose the folder where you downloaded this code..
-5. Restart 3D Slicer. The module will now appear under the **Radiotherapy** category.
-6. **Recommended Dependency:** It is highly recommended to have **SlicerRT** installed for the seamless importation and handling of DICOM-RT objects.
+## 💻 Installation
+
+### Option 1 — 3D Slicer Extensions Manager (Recommended)
+
+RadReirradiation is officially available in the 
+3D Slicer Extensions Manager.
+
+1. Open **3D Slicer 5.10** or **Slicer Preview**
+2. Go to **Extensions Manager** (top menu or Edit → 
+   Extensions Manager)
+3. Search for: `RadReirradiation`
+4. Click **Install**
+5. Restart 3D Slicer
+
+> ⚠️ **Requirement:** [SlicerRT](https://slicerrt.github.io) 
+> must be installed before RadReirradiation. 
+> It provides full DICOM-RT file support (RT Dose, 
+> RT Structure Set, RT Plan).
+
+---
+
+### Option 2 — Manual Installation (Development)
+
+If you want to test the latest development version 
+directly from this repository:
+
+1. Clone or download this repository
+2. Open 3D Slicer
+3. Go to **Edit → Application Settings → Modules**
+4. Under **Additional module paths**, click **Add**
+5. Select the folder containing `RadReirradiation.py`
+6. Click **OK** and restart 3D Slicer
+
+---
+
+> 💡 **Tip:** Option 1 is recommended for clinical use. 
+> Option 2 is intended for developers and contributors 
+> who want to test new features before an official release.
 
 ## 📹 Video Tutorial
 
