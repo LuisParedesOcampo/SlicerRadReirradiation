@@ -95,7 +95,6 @@ covering the full reirradiation analysis workflow:
 
 ## Step-by-step tutorial 🛠️
 
-https://www.youtube.com/watch?v=xFspmJT0Wr8
 
 **1. Data Preparation: From TPS to 3D Slicer**
 
