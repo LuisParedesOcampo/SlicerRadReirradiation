@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="Feat: Add manual alignment rotation with progressive disclosure and BRAINSFit bypass.&#10;&#10;Added manual pitch, roll, and yaw rotation sliders. Added logic to disable rotation controls during auto-registration to prevent BRAINSFit failures. Added support for 'Manual Only' registration mode.">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/RadReirradiation.py" beforeDir="false" afterPath="$PROJECT_DIR$/RadReirradiation.py" afterDir="false" />
-    </list>
+    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -117,7 +114,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780204734666</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)">
+      <option name="closed" value="true" />
+      <created>1780236525343</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1780236525343</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -126,6 +131,7 @@
     <MESSAGE value="IMPLEMENTED LQL MODEL, NEEDS MORE REVISION" />
     <MESSAGE value="Cambio de nombre e inicio desarrollo fusion manaual avanzada" />
     <MESSAGE value="Feat: Add manual alignment rotation with progressive disclosure and BRAINSFit bypass.&#10;&#10;Added manual pitch, roll, and yaw rotation sliders. Added logic to disable rotation controls during auto-registration to prevent BRAINSFit failures. Added support for 'Manual Only' registration mode." />
-    <option name="LAST_COMMIT_MESSAGE" value="Feat: Add manual alignment rotation with progressive disclosure and BRAINSFit bypass.&#10;&#10;Added manual pitch, roll, and yaw rotation sliders. Added logic to disable rotation controls during auto-registration to prevent BRAINSFit failures. Added support for 'Manual Only' registration mode." />
+    <MESSAGE value="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
+    <option name="LAST_COMMIT_MESSAGE" value="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
   </component>
 </project>
