@@ -575,41 +575,56 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     def onApplyButton(self):
-        # 1. Recolectar los datos que el usuario puso en la interfaz
-        # 1. Recolectar los datos que el usuario puso en la interfaz
-        dose_a_node = self.dose_a_selector.currentNode()
-        dose_b_node = self.dose_b_selector.currentNode()
-        ab = self.ab_spinbox.value
-        fx_a = self.fractions_a_spinbox.value
-        fx_b = self.fractions_b_spinbox.value
 
-        # Nuevos valores de tiempo
-        use_recovery = self.recovery_checkbox.isChecked()
-        months = self.months_spinbox.value
+        # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
+        self.resetResultsDisplay()
+        # Bloqueamos el botón temporalmente para que no hagan doble clic
+        self.applyButton.setEnabled(False)
 
-        # Leemos el nombre personalizado
-        custom_name = self.output_name_input.text.strip()
-
-        # 2. Enviar los datos a la Lógica (el cerebro) envueltos en un bloque de seguridad
         try:
-            # Mostramos un mensaje temporal en la barra de estado de Slicer
-            slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
+            slicer.util.showStatusMessage("Calculating new EQD2 dose... Please wait.")
 
-            # ¡Llamamos a la magia!
-            resultado = self.logic.procesarDosis(dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months,
-                                                 custom_name)
+            # 1. Recolectar los datos que el usuario puso en la interfaz
+            # 1. Recolectar los datos que el usuario puso en la interfaz
+            dose_a_node = self.dose_a_selector.currentNode()
+            dose_b_node = self.dose_b_selector.currentNode()
+            ab = self.ab_spinbox.value
+            fx_a = self.fractions_a_spinbox.value
+            fx_b = self.fractions_b_spinbox.value
 
-            # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
-            self.eqd2_node = resultado  # (Asegúrate de usar el mismo nombre de la variable de arriba)
-            # Encendemos el botón verde de exportar
-            self.exportButton.enabled = True
+            # Nuevos valores de tiempo
+            use_recovery = self.recovery_checkbox.isChecked()
+            months = self.months_spinbox.value
 
-            slicer.util.showStatusMessage("¡Calculation completed!")
-            slicer.util.infoDisplay("¡Cálculation of accumulated EQD2 completed con successfully!",
-                                    windowTitle="RadReirradiation")
+            # Leemos el nombre personalizado
+            custom_name = self.output_name_input.text.strip()
+
+            # 2. Enviar los datos a la Lógica (el cerebro) envueltos en un bloque de seguridad
+            try:
+                # Mostramos un mensaje temporal en la barra de estado de Slicer
+                slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
+
+                # ¡Llamamos a la magia!
+                resultado = self.logic.procesarDosis(dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months,
+                                                     custom_name)
+
+                # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
+                self.eqd2_node = resultado  # (Asegúrate de usar el mismo nombre de la variable de arriba)
+                # Encendemos el botón verde de exportar
+                self.exportButton.enabled = True
+
+                slicer.util.showStatusMessage("¡Calculation completed!")
+                slicer.util.infoDisplay("¡Cálculation of accumulated EQD2 completed con successfully!",
+                                        windowTitle="RadReirradiation")
+            except Exception as e:
+                # Si algo falla (ej. tamaños distintos), Slicer no se cierra, solo muestra un aviso
+                slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
         except Exception as e:
-            # Si algo falla (ej. tamaños distintos), Slicer no se cierra, solo muestra un aviso
-            slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
+            slicer.util.errorDisplay(f"Calculation failed: {e}")
+        finally:
+            #  Al terminar (o si hay error), volvemos a habilitar el botón
+            self.applyButton.setEnabled(True)
+            slicer.util.showStatusMessage("Calculation completed.")
 
     def onRegisterButton(self):
         fixed_ct = self.fixed_ct_selector.currentNode()
@@ -737,7 +752,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         segmentation_node = self.rtstruct_selector.currentNode()
         if not segmentation_node:
-            slicer.util.warningDisplay("Select a valid RTSTRUCT in Panel 3.")
+            slicer.util.warningDisplay("Select a valid RTSTRUCT in Panel 2.")
             return
 
         segmentation = segmentation_node.GetSegmentation()
@@ -874,6 +889,40 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
 
         slicer.util.showStatusMessage("¡DVH Successfully generated!")
+
+    def resetResultsDisplay(self):
+        """Limpia de forma segura los datos anteriores de las métricas y el DVH."""
+
+        # ---------------------------------------------------------
+        # 1. LIMPIAR TABLA DE MÉTRICAS (Interfaz Qt)
+        # ---------------------------------------------------------
+        if hasattr(self, 'metrics_table') and self.metrics_table is not None:
+            self.metrics_table.clearContents()
+            self.metrics_table.setRowCount(0)
+
+            # ---------------------------------------------------------
+        # 2. LIMPIAR EL GRÁFICO DVH (Corregido para Slicer 5+)
+        # ---------------------------------------------------------
+        layoutManager = slicer.app.layoutManager()
+        if layoutManager:
+            # Seleccionamos la ventana del gráfico
+            plotWidget = layoutManager.plotWidget(0)
+
+
+            # Le pedimos al "View Node" que suelte el gráfico actual
+            if plotWidget and plotWidget.mrmlPlotViewNode():
+                plotWidget.mrmlPlotViewNode().SetPlotChartNodeID("")
+
+        # Vaciamos la memoria interna si el nodo del gráfico está guardado
+        if hasattr(self, 'chartNode') and self.chartNode is not None:
+            self.chartNode.RemoveAllPlotSeriesNodeIDs()
+
+        # ---------------------------------------------------------
+        # 3. FORZAR ACTUALIZACIÓN VISUAL
+        # ---------------------------------------------------------
+        # Obliga a Slicer a mostrar la pantalla en blanco antes de congelarse calculando
+        slicer.app.processEvents()
+        print("Interfaz limpia: Lienzo en blanco para el nuevo cálculo.")
 
     def onExportDICOMClicked(self):
         fixed_ct = self.fixed_ct_selector.currentNode()
@@ -1059,6 +1108,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
 
     def procesarDosis(self, dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months, custom_name=""):
         import numpy as np
+
 
         # --- PASO A: Validaciones Clínicas ---
         if not dose_a_node or not dose_b_node:
