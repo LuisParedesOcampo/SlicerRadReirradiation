@@ -6,6 +6,16 @@
 
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
 
+## 🚀 What's New (Latest Update)
+
+### 1. Advanced Manual Registration & Smart Algorithm Bypass
+* **Full 6-DOF Manual Control:** Added precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment. Includes a smart memory cache to ensure smooth rotations without origin-shift artifacts (the "needle effect").
+* **Smart BRAINSFit Protection:** To guarantee algorithmic stability, rotational controls are dynamically disabled and reset when using the Automatic Registration mode. This prevents `BRAINSFit` from failing due to extreme initial origin shifts.
+* **"Manual Only" Mode:** A progressive disclosure UI that allows users to bypass the intensive auto-registration engine completely, applying the manual transform directly to the dose and resampling it instantly.
+
+### 2. Clinical Data Integrity (Auto-Reset UI)
+* **Zero-Residual Data Architecture:** Implemented a strict "Reset Before Calculate" protocol. Metric tables and Dose-Volume Histograms (DVH) are instantly cleared from the Slicer scene the moment a new calculation is triggered. This eliminates the clinical risk of misinterpreting residual dosimetric data from previous calculations or patients.
+
 ## Features 🚀
 * **Interactive Manual Pre-Alignment:** Introduced a brand-new, safe manual pre-alignment panel. Users can now translate the Moving CT using intuitive sliders before running the automatic registration.
 * **Smart "Auto-Center" for CBCTs:** Added a one-click "Auto-Center CTs" button. It calculates the true RAS mathematical center of both datasets (bypassing FOV discrepancies common in Linac CBCTs) and teleports the images to match, automatically jumping all 2D slice views to the new target.
@@ -20,6 +30,8 @@
 * **Seamless SlicerRT Integration:** Output volumes are directly compatible with SlicerRT's Dose Volume Histogram (DVH) module.
 * **Dosimetric Analysis:** Metrics table (Dmax, Dmean) synchronized with structure visibility.
 *  **DVH Generation:** Generation of interactive DVH curves within the Slicer.
+* **Hybrid Image Registration:** Choose between fully automatic Rigid/Deformable registration (powered by BRAINSFit) or highly precise Manual Alignment with 6 Degrees of Freedom (Translational & Rotational).
+* **Clinical Safety First:** Automated UI resets and dynamic control locking ensure data integrity and prevent algorithmic errors during the workflow.
 
 ## 📚 Scientific Foundation and References
 The development of RadReirradiation is based on international standards for reporting and accumulating biological doses.
