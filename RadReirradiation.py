@@ -119,11 +119,58 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.manual_transform_node = None
         self.base_translation = [0.0, 0.0, 0.0]
 
+        # --- NUEVO: Control Manual Exclusivo y Rotación Avanzada ---
+
+        # 1. Casilla para Forzar Solo Alineación Manual (Manual Override)
+        self.manual_only_checkbox = qt.QCheckBox("Use Manual Alignment Only (Disable Auto-Registration)")
+        self.manual_only_checkbox.setChecked(False)
+        self.manual_only_checkbox.setToolTip(
+            "If checked, the algorithm will be bypassed, and only dose resampling will be applied using your manual alignment.")
+        self.manual_only_checkbox.setStyleSheet(
+            "font-weight: bold; color: #d35400;")  # Color naranja para advertencia visual
+        preAlignLayout.addRow(self.manual_only_checkbox)
+
+        # 2. Casilla de Revelación Progresiva para Rotación
+        self.advanced_rotation_checkbox = qt.QCheckBox("Advanced: Enable Rotation")
+        self.advanced_rotation_checkbox.setChecked(False)
+        self.advanced_rotation_checkbox.setEnabled(False)
+        preAlignLayout.addRow(self.advanced_rotation_checkbox)
+
+        # 3. Sliders de Rotación (Nacen ocultos usando .hide())
+        self.sliderPitch = ctk.ctkSliderWidget()
+        self.sliderPitch.minimum, self.sliderPitch.maximum, self.sliderPitch.value = -180, 180, 0
+        self.sliderPitch.suffix = " °"
+        self.sliderPitch.enabled = False
+        self.sliderPitch.hide()
+        preAlignLayout.addRow("Pitch (X-axis):", self.sliderPitch)
+
+        self.sliderRoll = ctk.ctkSliderWidget()
+        self.sliderRoll.minimum, self.sliderRoll.maximum, self.sliderRoll.value = -180, 180, 0
+        self.sliderRoll.suffix = " °"
+        self.sliderRoll.enabled = False
+        self.sliderRoll.hide()
+        preAlignLayout.addRow("Roll (Y-axis):", self.sliderRoll)
+
+        self.sliderYaw = ctk.ctkSliderWidget()
+        self.sliderYaw.minimum, self.sliderYaw.maximum, self.sliderYaw.value = -180, 180, 0
+        self.sliderYaw.suffix = " °"
+        self.sliderYaw.enabled = False
+        self.sliderYaw.hide()
+        preAlignLayout.addRow("Yaw (Z-axis):", self.sliderYaw)
+
         # Conectar los botones y barras a las funciones
         self.centerButton.connect('clicked(bool)', self.onCenterButtonClicked)
         self.sliderX.connect('valueChanged(double)', self.onSliderValueChanged)
         self.sliderY.connect('valueChanged(double)', self.onSliderValueChanged)
         self.sliderZ.connect('valueChanged(double)', self.onSliderValueChanged)
+
+        self.sliderPitch.connect('valueChanged(double)', self.onSliderValueChanged)
+        self.sliderRoll.connect('valueChanged(double)', self.onSliderValueChanged)
+        self.sliderYaw.connect('valueChanged(double)', self.onSliderValueChanged)
+
+        # Conectar las nuevas casillas a la lógica de la interfaz
+        self.advanced_rotation_checkbox.connect('toggled(bool)', self.onAdvancedRotationToggled)
+        self.manual_only_checkbox.connect('toggled(bool)', self.onManualOnlyToggled)
 
         # Casilla para Registro Afín (Escala y Cizalladura)
         self.affine_checkbox = qt.QCheckBox("Enable Affine Transform (Slower, high RAM)")
@@ -408,6 +455,10 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sliderY.enabled = True
             self.sliderZ.enabled = True
 
+            self.sliderPitch.enabled = True
+            self.sliderRoll.enabled = True
+            self.sliderYaw.enabled = True
+
         except Exception as e:
             slicer.util.errorDisplay(f"Error during Auto-Center: {str(e)}\nPlease check if the CT is fully loaded.")
 
@@ -415,20 +466,113 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Bloque de seguridad para cuando mueves las barras
         if self.manual_transform_node:
             try:
-                # Comprobar que el volante existe en la escena antes de inyectarle movimiento
+                # Comprobar que el nodo existe en la escena antes de inyectarle movimiento
                 if slicer.mrmlScene.GetNodeByID(self.manual_transform_node.GetID()):
-                    self.updateManualTransform(self.sliderX.value, self.sliderY.value, self.sliderZ.value)
+                    self.updateManualTransform(
+                        self.sliderX.value, self.sliderY.value, self.sliderZ.value,
+                        self.sliderPitch.value, self.sliderRoll.value, self.sliderYaw.value)
             except:
                 pass  # Ignorar silenciosamente si el nodo es un fantasma
 
-    def updateManualTransform(self, dx, dy, dz):
+    def updateManualTransform(self, dx, dy, dz, pitch=0, roll=0, yaw=0):
         import vtk
+        # 1. IDENTIFICAR EL VOLUMEN MÓVIL
+        # Asegúrate de que este sea el nombre correcto de tu selector del CT previo
+        moving_volume = self.moving_ct_selector.currentNode()
+
+        if not moving_volume:
+            return
+
+        # ---  Memorizar el centro para evitar el "brinco" visual ---
+        volume_id = moving_volume.GetID()
+        current_origin = moving_volume.GetOrigin()
+
+        # Si es la primera vez que movemos ESTE volumen, le calculamos el centro puro
+        if not hasattr(self, "pure_center_id") or self.pure_center_id != volume_id or \
+                not hasattr(self, "pure_center_origin") or self.pure_center_origin != current_origin:
+
+            moving_volume.SetAndObserveTransformNodeID(None)
+            bounds = [0, 0, 0, 0, 0, 0]
+            moving_volume.GetRASBounds(bounds)
+            cx = (bounds[0] + bounds[1]) / 2.0
+            cy = (bounds[2] + bounds[3]) / 2.0
+            cz = (bounds[4] + bounds[5]) / 2.0
+
+            # Guardamos los datos en la memoria del módulo
+            self.pure_center = (cx, cy, cz)
+            self.pure_center_id = volume_id
+            self.pure_center_origin = current_origin  # Memorizamos el origen actual
+
+            moving_volume.SetAndObserveTransformNodeID(self.manual_transform_node.GetID())
+        else:
+            # Si ya lo habíamos medido, simplemente rescatamos el dato de la memoria
+            cx, cy, cz = self.pure_center
+
+        # ------------------------------------------------------------------------
+
+        # CREAR LA MATRIZ DE TRANSFORMACIÓN
         transform = vtk.vtkTransform()
-        # Sumamos el teletransporte inicial + lo que muevas en las barras
+        transform.PostMultiply()
+
+        # PASO A: Llevar al origen
+        transform.Translate(-cx, -cy, -cz)
+
+        # PASO B: Rotar
+        transform.RotateX(pitch)
+        transform.RotateY(roll)
+        transform.RotateZ(yaw)
+
+        # PASO C: Devolver al centro
+        transform.Translate(cx, cy, cz)
+
+        # PASO D: Traslación final de los sliders
         transform.Translate(self.base_translation[0] + dx,
                             self.base_translation[1] + dy,
                             self.base_translation[2] + dz)
+
         self.manual_transform_node.SetMatrixTransformToParent(transform.GetMatrix())
+
+
+    def onAdvancedRotationToggled(self, isChecked):
+        """Muestra u oculta los sliders de rotación para mantener la interfaz limpia."""
+        if isChecked:
+            self.sliderPitch.show()
+            self.sliderRoll.show()
+            self.sliderYaw.show()
+        else:
+            self.sliderPitch.hide()
+            self.sliderRoll.hide()
+            self.sliderYaw.hide()
+            # Opcional: Si se ocultan, podríamos devolver la rotación a 0 para mayor seguridad clínica.
+            # Por ahora solo los ocultamos para no perder el trabajo del usuario.
+
+    def onManualOnlyToggled(self, isChecked):
+        """Si el usuario decide usar SOLO alineación manual, desactivamos las opciones de BRAINSFit."""
+        if isChecked:
+            self.affine_checkbox.setChecked(False)
+            self.deformable_checkbox.setChecked(False)
+            self.affine_checkbox.setEnabled(False)
+            self.deformable_checkbox.setEnabled(False)
+            self.advanced_rotation_checkbox.setEnabled(True)  # Permitir rotación manual
+            self.registerButton.text = "Apply Manual Alignment & Resample Dose"
+            self.registerButton.setStyleSheet("background-color: #d35400; color: white; font-weight: bold;")  # Naranja
+        else:
+            self.affine_checkbox.setEnabled(True)
+            self.deformable_checkbox.setEnabled(True)
+            self.registerButton.text = "Auto-Registration and Dose Resample"
+            self.registerButton.setStyleSheet(
+                "background-color: #2196F3; color: white; font-weight: bold;")  # Azul original
+            # --- PROTECCIÓN ANTI-BRAINSFIT ---
+            # Deshabilitamos la rotación
+            self.advanced_rotation_checkbox.setChecked(False)
+            self.advanced_rotation_checkbox.setEnabled(False)
+            self.onAdvancedRotationToggled(False)  # Esto oculta los sliders
+
+            # Reseteamos los valores de rotación a 0 para asegurar un inicio limpio
+            self.sliderPitch.value = 0
+            self.sliderRoll.value = 0
+            self.sliderYaw.value = 0
+
 
     def onApplyButton(self):
         # 1. Recolectar los datos que el usuario puso en la interfaz
@@ -473,36 +617,49 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         moving_dose = self.moving_dose_selector.currentNode()
         fixed_dose = self.fixed_dose_selector.currentNode()
 
-        # Leemos si el usuario quiere deformable o affine
+        # Leemos qué algoritmos quiere el usuario
         use_deformable = self.deformable_checkbox.isChecked()
-        use_affine = self.affine_checkbox.isChecked()  # <
+        use_affine = self.affine_checkbox.isChecked()
+        use_manual_only = self.manual_only_checkbox.isChecked()  # <-- Leemos la nueva casilla
 
         if not fixed_ct or not moving_ct or not moving_dose:
             slicer.util.errorDisplay("Please select the two CTs and the Dose you wish to align.",
                                      windowTitle="Data is missing")
             return
 
+
+
         try:
-            if use_deformable:
-                slicer.util.showStatusMessage(
-                    "Running Deformable Registration (May take minutes) (BRAINSFit) Please wait...")
+            # Mensajes de estado dinámicos
+            if use_manual_only:
+                slicer.util.showStatusMessage("Applying Manual Alignment & Resampling Dose...")
+            elif use_deformable:
+                slicer.util.showStatusMessage("Running Deformable Registration (May take minutes)...")
             else:
-                slicer.util.showStatusMessage("Running Rigid Registration (BRAINSFit) Please wait...")
+                slicer.util.showStatusMessage("Running Rigid Registration...")
 
-            # Llamamos a la lógica
-            # self.logic.runFastRegistration(fixed_ct, moving_ct, moving_dose, fixed_dose, use_deformable)
-            # 1. CAPTURAMOS el resultado del registro
-            aligned_dose_node = self.logic.runFastRegistration(fixed_ct, moving_ct, moving_dose, fixed_dose,
-                                                               use_deformable, use_affine, self.manual_transform_node)
+            # =======================================================
+            # 2. LLAMAR A LA LÓGICA (Añadimos use_manual_only al final)
+            # =======================================================
+            aligned_dose_node = self.logic.runFastRegistration(
+                fixed_ct, moving_ct, moving_dose, fixed_dose,
+                use_deformable, use_affine, self.manual_transform_node, use_manual_only
+            )
 
-            # 2. MAGIA UX: Auto-asignamos los volúmenes a los selectores del PASO 2
+            if not aligned_dose_node:
+                return  # Si falló algo en la lógica, paramos.
+
+            # =======================================================
+            # 3. MAGIA UX: Asignación al Paso 2
+            # =======================================================
             self.dose_a_selector.setCurrentNode(aligned_dose_node)
             self.dose_b_selector.setCurrentNode(fixed_dose)
 
-            slicer.util.showStatusMessage("registration and Dose resampling completed!")
+            slicer.util.showStatusMessage("Registration and Dose resampling completed!")
             slicer.util.infoDisplay(
                 "Successful alignment.\n\nLook for the new Dose volume with the suffix '_Registered' in your Base Dose (RT1) list to perform the calculation.",
                 windowTitle="RadReirradiation FastReg")
+
         except Exception as e:
             slicer.util.errorDisplay(f"Error during image registration:\n{str(e)}",
                                      windowTitle="RadReirradiation Error")
@@ -766,7 +923,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
     def runFastRegistration(self, fixed_ct, moving_ct, moving_dose, fixed_dose, use_deformable=False, use_affine=False,
-                            manual_transform=None):
+                            manual_transform=None, use_manual_only=False):
         # ==========================================================
         # UX: INICIAR VENTANA DE CARGA Y CURSOR DE ESPERA
         # ==========================================================
@@ -782,77 +939,100 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         progress.show()
         slicer.app.processEvents()  # Vital: Fuerza a Slicer a dibujar la ventana antes de congelarse
         try:
-            # 1. Crear el "recipiente" donde se guardará el resultado matemático de la fusión
-            transform_name = f"Transform_{moving_ct.GetName()}_to_{fixed_ct.GetName()}"
-            final_transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode", transform_name)
-
-            # 2. Configurar el tipo de transformación dinámicamente según la interfaz
-            fases_registro = ["Rigid"]  # Rígido siempre es obligatorio como base
-
-            if use_affine:
-                fases_registro.append("Affine")
-
-            if use_deformable:
-                fases_registro.append("BSpline")
-
-            # Unir las palabras con comas (Ej: "Rigid,BSpline" si Affine está apagado)
-            t_types = ",".join(fases_registro)
-
-            tasa_muestreo = 0.01 if use_deformable else 0.02
-
-            # 3. Diccionario de Parámetros de BRAINSFit con "Balance Clínico"
-            parameters = {
-                "fixedVolume": fixed_ct.GetID(),
-                "movingVolume": moving_ct.GetID(),
-                "transformType": t_types,
-                "maskProcessingMode": "NOMASK",
-                "samplingPercentage": tasa_muestreo,  # 2% de los píxeles (Estándar comercial para velocidad/precisión)
-                "numberOfIterations": 500,  # Límite de intentos para evitar ciclos infinitos
-                "minimumStepLength": 0.005,  # Detenerse temprano si el "match" óseo ya es perfecto
-            }
-
-            # 4. El Puente: ¿El usuario ajustó las barras manuales?
-            if manual_transform:
-                parameters["initialTransform"] = manual_transform.GetID()
-                parameters["initializeTransformMode"] = "Off"  # Respetar el ajuste manual del usuario
-            else:
-                parameters[
-                    "initializeTransformMode"] = "useGeometryAlign"  # Si no usó las barras, intentar centrar automático
-
-            # 5. Decirle al motor de registro DÓNDE GUARDAR el resultado
-            if use_deformable:
-                parameters["bsplineTransform"] = final_transform.GetID()
-                parameters["splineGridSize"] = [5, 5, 5]
-            else:
-                parameters["linearTransform"] = final_transform.GetID()
-
             # ==========================================================
-            # 6. EJECUTAR EL MOTOR DE REGISTRO DE IMÁGENES (BRAINSFit)
+            # EL BYPASS: SI NO ES MODO MANUAL, EJECUTAMOS BRAINSFit
             # ==========================================================
-            brainsFit = slicer.modules.brainsfit
-            cliNode = slicer.cli.runSync(brainsFit, None, parameters)
+            final_transform = None
+            # Detectamos si el CT está enganchado al nodo de transformación
+            is_manual_active = (manual_transform is not None) and (
+                        moving_ct.GetParentTransformNode() == manual_transform)
 
-            if cliNode.GetStatus() & cliNode.ErrorsMask:
-                raise ValueError("The image registration engine (BRAINSFit) failed.")
+            if not use_manual_only:
+
+
+                # 1. Crear el "recipiente" donde se guardará el resultado matemático de la fusión
+                transform_name = f"Transform_{moving_ct.GetName()}_to_{fixed_ct.GetName()}"
+                final_transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode", transform_name)
+
+                # 2. Configurar el tipo de transformación dinámicamente según la interfaz
+                fases_registro = ["Rigid"]  # Rígido siempre es obligatorio como base
+
+                if use_affine:
+                    fases_registro.append("Affine")
+
+                if use_deformable:
+                    fases_registro.append("BSpline")
+
+                # Unir las palabras con comas (Ej: "Rigid,BSpline" si Affine está apagado)
+                t_types = ",".join(fases_registro)
+
+                tasa_muestreo = 0.01 if use_deformable else 0.02
+
+                # 3. Diccionario de Parámetros de BRAINSFit con "Balance Clínico"
+                parameters = {
+                    "fixedVolume": fixed_ct.GetID(),
+                    "movingVolume": moving_ct.GetID(),
+                    "transformType": t_types,
+                    "maskProcessingMode": "NOMASK",
+                    "samplingPercentage": tasa_muestreo,  # 2% de los píxeles (Estándar comercial para velocidad/precisión)
+                    "numberOfIterations": 500,  # Límite de intentos para evitar ciclos infinitos
+                    "minimumStepLength": 0.005,  # Detenerse temprano si el "match" óseo ya es perfecto
+                }
+
+                # 4. El Puente: ¿El usuario ajustó las barras manuales?
+                # Si el usuario movió las barras, inyectamos esa matriz inicial sin duplicarla.
+                # Si no, usamos el centrado geométrico automático.
+                if is_manual_active:
+                    parameters["initialTransform"] = manual_transform.GetID()
+                    parameters["initializeTransformMode"] = "Off"
+                else:
+                    parameters["initializeTransformMode"] = "useGeometryAlign"
+
+                # 5. Decirle al motor de registro DÓNDE GUARDAR el resultado
+                if use_deformable:
+                    parameters["bsplineTransform"] = final_transform.GetID()
+                    parameters["splineGridSize"] = [5, 5, 5]
+                else:
+                    parameters["linearTransform"] = final_transform.GetID()
+
+                # ==========================================================
+                # 6. EJECUTAR EL MOTOR DE REGISTRO DE IMÁGENES (BRAINSFit)
+                # ==========================================================
+                brainsFit = slicer.modules.brainsfit
+                cliNode = slicer.cli.runSync(brainsFit, None, parameters)
+
+                if cliNode.GetStatus() & cliNode.ErrorsMask:
+                    raise ValueError("The image registration engine (BRAINSFit) failed.")
 
             # ==========================================================
             # 7. MOVER LA DOSIS ANTIGUA (BRAINSResample)
+            # (ESTO SE EJECUTA SIEMPRE, YA SEA MANUAL O AUTOMÁTICO)
             # ==========================================================
             # Preparar un volumen clonado vacío para recibir la nueva dosis deformada
             output_dose_name = f"{moving_dose.GetName()}_Registered"
             volumesLogic = slicer.modules.volumes.logic()
-            outputDose = volumesLogic.CloneVolume(slicer.mrmlScene, fixed_dose, output_dose_name)
+
+            reference_volume = fixed_dose if fixed_dose else fixed_ct
+
+            outputDose = volumesLogic.CloneVolume(slicer.mrmlScene, reference_volume, output_dose_name)
             outputDose.SetAttribute("DICOM.Modality", "RTDOSE")
 
             # Configurar el motor de re-muestreo pasándole el final_transform obtenido arriba
             resample_params = {
                 "inputVolume": moving_dose.GetID(),
-                "referenceVolume": fixed_dose.GetID(),
+                "referenceVolume": reference_volume.GetID(),
                 "outputVolume": outputDose.GetID(),
-                "warpTransform": final_transform.GetID(),  # Aplicar el mismo movimiento de los huesos a la dosis
+              #  "warpTransform": final_transform.GetID(),  # Aplicar el mismo movimiento de los huesos a la dosis
                 "interpolationMode": "Linear",
                 "pixelType": "float"
             }
+
+            # INYECCIÓN MATEMÁTICA: Si se usó Auto-Registro, le pasamos el cálculo final
+            # Si se eligió Solo Manual, le pasamos los movimientos de las barras directamente a la Dosis
+            if not use_manual_only and final_transform:
+                resample_params["warpTransform"] = final_transform.GetID()
+            elif use_manual_only and is_manual_active:
+                resample_params["warpTransform"] = manual_transform.GetID()
 
             cliNodeResample = slicer.cli.runSync(slicer.modules.brainsresample, None, resample_params)
 
@@ -863,7 +1043,9 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             # 8. ACTUALIZAR LA PANTALLA
             # ==========================================================
             # Enganchar el TAC Antiguo a la transformación final para que el usuario vea el resultado
-            moving_ct.SetAndObserveTransformNodeID(final_transform.GetID())
+            if not use_manual_only and final_transform:
+                moving_ct.SetAndObserveTransformNodeID(final_transform.GetID())
+
             slicer.util.setSliceViewerLayers(background=fixed_ct, foreground=moving_ct, foregroundOpacity=0.5)
 
             return outputDose

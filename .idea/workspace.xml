@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="IMPLEMENTED LQL MODEL, NEEDS MORE REVISION" />
+    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="Cambio de nombre e inicio desarrollo fusion manaual avanzada">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/RadReirradiation.py" beforeDir="false" afterPath="$PROJECT_DIR$/RadReirradiation.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -98,13 +101,22 @@
       <option name="project" value="LOCAL" />
       <updated>1780094403283</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="Cambio de nombre e inicio desarrollo fusion manaual avanzada">
+      <option name="closed" value="true" />
+      <created>1780189553440</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1780189553440</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Rename extension to RadReirradiaton" />
     <MESSAGE value="add incon and scrrenshot" />
     <MESSAGE value="IMPLEMENTED LQL MODEL, NEEDS MORE REVISION" />
-    <option name="LAST_COMMIT_MESSAGE" value="IMPLEMENTED LQL MODEL, NEEDS MORE REVISION" />
+    <MESSAGE value="Cambio de nombre e inicio desarrollo fusion manaual avanzada" />
+    <option name="LAST_COMMIT_MESSAGE" value="Cambio de nombre e inicio desarrollo fusion manaual avanzada" />
   </component>
 </project>
