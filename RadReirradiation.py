@@ -625,113 +625,133 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Bloqueamos el botón temporalmente para que no hagan doble clic
         self.applyButton.setEnabled(False)
 
+        # ==========================================================
+        # 1. CREAR VENTANA DE ESPERA (PROGRESS DIALOG)
+        # ==========================================================
+        progress_dialog = slicer.util.createProgressDialog(
+            parent=slicer.util.mainWindow(),
+            labelText="Calculating 3D biological Dose EQD2...\n\nThis may take a moment. Please wait.",
+            maximum=0  # ¡El '0' es el truco! Hace que la barra se mueva de lado a lado infinitamente
+        )
+        progress_dialog.windowTitle = "RadReirradiation - Processing Dose"
+        progress_dialog.setCancelButton(None)  # Ocultamos el botón "Cancelar" para que el usuario no rompa el cálculo
+        progress_dialog.show()
+        slicer.app.processEvents()  # Forzamos a que la ventana se dibuje INMEDIATAMENTE en pantalla
+
         try:
-            slicer.util.showStatusMessage("Calculating new EQD2 dose... Please wait.")
 
-            # ===================== TABLA BIOLÓGICA ====================================
-            # 1. Extraemos la configuración de la tabla
-            current_bio_setup = self.getBiologicalConfiguration()
-
-            # 2. Imprimimos para ver la magia en la consola de Python de Slicer
-            print("--- CONFIGURACIÓN BIOLÓGICA EXTRAÍDA ---")
-            for structure, config in current_bio_setup.items():
-                print(f"Estructura: {structure} | Rol: {config['role']} | Gana en choque: {config['priority']}")
-            print("----------------------------------------")
-
-            # Si la tabla estaba vacía, detenemos el cálculo por seguridad
-            if not current_bio_setup:
-                slicer.util.warningDisplay("La tabla biológica está vacía. Por favor, carga las estructuras primero.")
-                return
-            # =========================================================================
-
-            import numpy as np
-
-            # 1. Recolectar los datos que el usuario puso en la interfaz
-            dose_a_node = self.dose_a_selector.currentNode()
-            dose_b_node = self.dose_b_selector.currentNode()
-            fx_a = self.fractions_a_spinbox.value
-            fx_b = self.fractions_b_spinbox.value
-            use_recovery = self.recovery_checkbox.isChecked()
-            months = self.months_spinbox.value
-            custom_name = self.output_name_input.text.strip()
-
-            # ---  LÓGICA: VALORES ALPHA/BETA ---
-
-            ab_oar_value = float(self.ab_spinbox.value)
-            ab_tumor_value = float(self.ab_tumor_spinbox.value)
-
-            # --- CREACIÓN DEL MAPA BIOLÓGICO 3D (Las Capas) ---
-            slicer.util.showStatusMessage("Generando máscaras biológicas espaciales...")
-            slicer.app.processEvents()  # Mantiene la UI fluida
-
-            # Usamos dose_a_node como referencia para el tamaño (shape) del paciente
-            dose_array_shape = slicer.util.arrayFromVolume(dose_a_node).shape
-            ab_map = np.full(dose_array_shape, ab_oar_value, dtype=np.float32)
-
-            segmentation_node = self.rtstruct_selector.currentNode()
-            segmentation = segmentation_node.GetSegmentation()
-
-            tumor_mask_global = np.zeros(dose_array_shape, dtype=bool)
-            oar_mask_global = np.zeros(dose_array_shape, dtype=bool)
-            segment_masks = {}
-
-            # Recorremos y extraemos matrices de las estructuras seleccionadas
-            for i in range(segmentation.GetNumberOfSegments()):
-                segment_id = segmentation.GetNthSegmentID(i)
-                segment_name = segmentation.GetSegment(segment_id).GetName()
-
-                if segment_name in current_bio_setup:
-                    # Extraer matriz binaria, ajustada al tamaño de la dosis A
-                    segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
-                                                                               dose_a_node)
-
-                    if segment_array is not None:
-                        binary_mask = (segment_array > 0)
-                        segment_masks[segment_name] = binary_mask
-
-                        if current_bio_setup[segment_name]["role"] == "Tumor":
-                            tumor_mask_global |= binary_mask
-                        else:
-                            oar_mask_global |= binary_mask
-
-            # Pintamos las capas en la matriz ab_map
-            ab_map[tumor_mask_global] = ab_tumor_value
-            ab_map[oar_mask_global] = ab_oar_value  # La Capa 3: OAR sobreescribe Tumor por defecto
-
-            # Capa 4: Excepciones (Si el usuario forzó que un Tumor gane)
-            for name, config in current_bio_setup.items():
-                if config["priority"] == "Tumor" and name in segment_masks:
-                    overlap = segment_masks[name] & tumor_mask_global
-                    ab_map[overlap] = ab_tumor_value
-
-            # 2. Enviar los datos a la Lógica (el cerebro)
             try:
-                slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
+                slicer.util.showStatusMessage("Calculating new EQD2 dose... Please wait.")
 
-                # ¡Llamamos a la magia! ATENCIÓN: Ahora enviamos 'ab_map' en lugar de 'ab'
-                resultado = self.logic.procesarDosis(dose_a_node, dose_b_node, ab_map, fx_a, fx_b, use_recovery, months,
-                                                     custom_name)
+                # ===================== TABLA BIOLÓGICA ====================================
+                # 1. Extraemos la configuración de la tabla
+                current_bio_setup = self.getBiologicalConfiguration()
 
-                # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
-                self.eqd2_node = resultado
-                # Encendemos el botón verde de exportar
-                self.exportButton.enabled = True
+                # 2. Imprimimos para ver la magia en la consola de Python de Slicer
+                print("--- Biological configuration extracted ---")
+                for structure, config in current_bio_setup.items():
+                    print(f"structure: {structure} | Role: {config['role']} | Wins in interception: {config['priority']}")
+                print("----------------------------------------")
 
-                slicer.util.showStatusMessage("¡Calculation completed!")
-                slicer.util.infoDisplay("¡Cálculo de EQD2 acumulado completado con éxito!",
-                                        windowTitle="RadReirradiation")
+                # Si la tabla estaba vacía, detenemos el cálculo por seguridad
+                if not current_bio_setup:
+                    slicer.util.warningDisplay("The biological table is empty. Please load the structures first..")
+                    return
+                # =========================================================================
+
+                import numpy as np
+
+                # 1. Recolectar los datos que el usuario puso en la interfaz
+                dose_a_node = self.dose_a_selector.currentNode()
+                dose_b_node = self.dose_b_selector.currentNode()
+                fx_a = self.fractions_a_spinbox.value
+                fx_b = self.fractions_b_spinbox.value
+                use_recovery = self.recovery_checkbox.isChecked()
+                months = self.months_spinbox.value
+                custom_name = self.output_name_input.text.strip()
+
+                # ---  LÓGICA: VALORES ALPHA/BETA ---
+
+                ab_oar_value = float(self.ab_spinbox.value)
+                ab_tumor_value = float(self.ab_tumor_spinbox.value)
+
+                # --- CREACIÓN DEL MAPA BIOLÓGICO 3D (Las Capas) ---
+                slicer.util.showStatusMessage("Generating biological masks...")
+                slicer.app.processEvents()  # Mantiene la UI fluida
+
+                # Usamos dose_a_node como referencia para el tamaño (shape) del paciente
+                dose_array_shape = slicer.util.arrayFromVolume(dose_a_node).shape
+                ab_map = np.full(dose_array_shape, ab_oar_value, dtype=np.float32)
+
+                segmentation_node = self.rtstruct_selector.currentNode()
+                segmentation = segmentation_node.GetSegmentation()
+
+                tumor_mask_global = np.zeros(dose_array_shape, dtype=bool)
+                oar_mask_global = np.zeros(dose_array_shape, dtype=bool)
+                segment_masks = {}
+
+                # Recorremos y extraemos matrices de las estructuras seleccionadas
+                for i in range(segmentation.GetNumberOfSegments()):
+                    segment_id = segmentation.GetNthSegmentID(i)
+                    segment_name = segmentation.GetSegment(segment_id).GetName()
+
+                    if segment_name in current_bio_setup:
+                        # Extraer matriz binaria, ajustada al tamaño de la dosis A
+                        segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
+                                                                                   dose_a_node)
+
+                        if segment_array is not None:
+                            binary_mask = (segment_array > 0)
+                            segment_masks[segment_name] = binary_mask
+
+                            if current_bio_setup[segment_name]["role"] == "Tumor":
+                                tumor_mask_global |= binary_mask
+                            else:
+                                oar_mask_global |= binary_mask
+
+                # Pintamos las capas en la matriz ab_map
+                ab_map[tumor_mask_global] = ab_tumor_value
+                ab_map[oar_mask_global] = ab_oar_value  # La Capa 3: OAR sobreescribe Tumor por defecto
+
+                # Capa 4: Excepciones (Si el usuario forzó que un Tumor gane)
+                for name, config in current_bio_setup.items():
+                    if config["priority"] == "Tumor" and name in segment_masks:
+                        overlap = segment_masks[name] & tumor_mask_global
+                        ab_map[overlap] = ab_tumor_value
+
+                # 2. Enviar los datos a la Lógica (el cerebro)
+                try:
+                    slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
+
+                    # ¡Llamamos a la magia! ATENCIÓN: Ahora enviamos 'ab_map' en lugar de 'ab'
+                    resultado = self.logic.procesarDosis(dose_a_node, dose_b_node, ab_map, fx_a, fx_b, use_recovery, months,
+                                                         custom_name)
+
+                    # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
+                    self.eqd2_node = resultado
+                    # Encendemos el botón verde de exportar
+                    self.exportButton.enabled = True
+
+                    slicer.util.showStatusMessage("¡Calculation completed!")
+                    slicer.util.infoDisplay("Cumulative EQD2 calculation successfully completed!",
+                                            windowTitle="RadReirradiation")
+
+                except Exception as e:
+                    # Si algo falla (ej. tamaños distintos)
+                    slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
 
             except Exception as e:
-                # Si algo falla (ej. tamaños distintos)
-                slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
-
+                slicer.util.errorDisplay(f"Calculation failed: {e}")
         except Exception as e:
             slicer.util.errorDisplay(f"Calculation failed: {e}")
-
+        # ==========================================================
+        # 2. CERRAR VENTANA DE ESPERA Y LIBERAR INTERFAZ
+        # ==========================================================
         finally:
             #  Al terminar (o si hay error), volvemos a habilitar el botón
             self.applyButton.setEnabled(True)
             slicer.util.showStatusMessage("Ready.")
+            progress_dialog.close()  # Destruimos la ventana de carga
 
     def onRegisterButton(self):
         fixed_ct = self.fixed_ct_selector.currentNode()
@@ -1385,6 +1405,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         # 1. Encontrar la dosis máxima para escalar los colores automáticamente
         dosis_maxima = np.max(eqd2_total)
 
+
         # 2. Configurar el "Display Node" (el pintor de Slicer)
         display_node = eqd2_node.GetDisplayNode()
         if display_node is None:
@@ -1408,14 +1429,11 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             # Usamos una función de transferencia para crear el degradado suave
             ctf = vtk.vtkColorTransferFunction()
             ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)  # 0%   - Azul Oscuro (Bajas dosis)
-            ctf.AddRGBPoint(0.25, 0.68, 0.85,0.9) # 25%   - Azul claro (Bajas dosis)
-            ctf.AddRGBPoint(0.50, 0.0, 0.8, 1.0)  # 50%  - Cyan
-            ctf.AddRGBPoint(0.80, 0.0, 1.0, 0.0)  # 80%  - Verde
-            ctf.AddRGBPoint(0.90, 1.0, 1.0, 0.0)  # 90%  - Amarillo
-            ctf.AddRGBPoint(0.95, 1.0, 0.5, 0.0)  # 95%  - Naranja
+            ctf.AddRGBPoint(0.25, 0.0, 0.8, 1.0)  # 25%  - Cyan
+            ctf.AddRGBPoint(0.50, 0.0, 1.0, 0.0)  # 50%  - Verde
+            ctf.AddRGBPoint(0.75, 1.0, 1.0, 0.0)  # 75%  - Amarillo
+            ctf.AddRGBPoint(0.90, 1.0, 0.5, 0.0)  # 90%  - Naranja
             ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)  # 100% - Rojo (Altas dosis)
-            ctf.AddRGBPoint(1.07, 0.5, 0.0, 0.5)  # 107% - morado (puntos calientes 107%)
-            ctf.AddRGBPoint(1.20, 0.62, 0.0, 1.0) # 120% - morado intenso (puntos calientes 107%)
 
             # Llenamos la paleta de Slicer con los 256 colores interpolados
             for i in range(256):
