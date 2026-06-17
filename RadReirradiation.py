@@ -66,21 +66,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "The Dose (RD) from the previous treatment RT1 that you want to align to the new grid.")
         registrationFormLayout.addRow("RTDOSE previous treatment RT1 (Moving): ", self.moving_dose_selector)
 
-        # Selector seguro para las estructuras del TAC móvil
+        # Selector para las estructuras del TAC móvil (Prev)
         self.moving_rtstruct_selector = slicer.qMRMLNodeComboBox()
         self.moving_rtstruct_selector.nodeTypes = ["vtkMRMLSegmentationNode"]
         self.moving_rtstruct_selector.selectNodeUponCreation = False
         self.moving_rtstruct_selector.addEnabled = False
         self.moving_rtstruct_selector.removeEnabled = False
         self.moving_rtstruct_selector.noneEnabled = True
-        self.moving_rtstruct_selector.showHidden = False
-        self.moving_rtstruct_selector.showChildNodeTypes = False
         self.moving_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
-        self.moving_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC móvil")
-
-        # Agrega esta línea junto a las demás filas de tu formulario
-        # (Asegúrate de cambiar 'parametersFormLayout' por el nombre real de tu variable de diseño si es diferente)
-        registrationFormLayout.addRow("Moving RTSTRUCT (Prev): ", self.moving_rtstruct_selector)
+        self.moving_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC móvil previo")
+        registrationFormLayout.addRow("RTSTRUCT previous treatment RT1 (Moving): ", self.moving_rtstruct_selector)
 
         # Selector: CT RT2 tratamiento Fijo (Nuevo)
         self.fixed_ct_selector = slicer.qMRMLNodeComboBox()
@@ -99,6 +94,20 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_dose_selector.setToolTip(
             "The Dosage of the NEW plan. Its geometric matrix will be used as a template.")
         registrationFormLayout.addRow("RTDOSE planned treatment RT2 (Fixed): ", self.fixed_dose_selector)
+
+        # Selector de seguridad para las estructuras del TAC fijo (Current)
+        self.fixed_rtstruct_selector = slicer.qMRMLNodeComboBox()
+        self.fixed_rtstruct_selector.nodeTypes = ["vtkMRMLSegmentationNode"]
+        self.fixed_rtstruct_selector.selectNodeUponCreation = False
+        self.fixed_rtstruct_selector.addEnabled = False
+        self.fixed_rtstruct_selector.removeEnabled = False
+        self.fixed_rtstruct_selector.noneEnabled = True
+        self.fixed_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
+        self.fixed_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC fijo actual")
+        registrationFormLayout.addRow("RTSTRUCT planned treatment RT2 (Fixed): ", self.fixed_rtstruct_selector)
+
+        self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
+        self.moving_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
 
         # --- NUEVO: Panel Seguro de Pre-Alineación Manual ---
         self.preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -230,7 +239,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.rtstruct_selector.showHidden = False
         self.rtstruct_selector.showChildNodeTypes = False
         self.rtstruct_selector.setMRMLScene(slicer.mrmlScene)
-        self.rtstruct_selector.setToolTip("Selecciona el conjunto de estructuras (RTSTRUCT) de la RT Nueva.")
+        self.rtstruct_selector.setToolTip("Selecciona el conjunto de estructuras (RTSTRUCT) a visualizar.")
+
+        # =======================================================
+        # MAGIA DE FILTRADO: Exigir la etiqueta de RadReirradiation
+        # =======================================================
+        self.rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationUse", "True")
+
         structuresFormLayout.addRow("RT2 Structures: ", self.rtstruct_selector)
 
         # --- BOTÓN PARA OCULTAR TODAS LAS ESTRUCTURAS ---
@@ -769,12 +784,32 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.util.showStatusMessage("Ready.")
             progress_dialog.close()  # Destruimos la ventana de carga
 
+    def updateVisualizationSelector(self, node=None):
+        """Filtra el combobox del Panel 2 para mostrar solo las estructuras cargadas en el Panel 1"""
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+
+        # 1. Quitamos la etiqueta especial a TODAS las estructuras de la escena
+        for seg_node in segmentation_nodes:
+            seg_node.RemoveAttribute("RadReirradiationUse")
+
+        # 2. Leemos qué seleccionó el usuario exactamente en el Panel 1
+        fixed_node = getattr(self, 'fixed_rtstruct_selector', None)
+        moving_node = getattr(self, 'moving_rtstruct_selector', None)
+
+        # 3. Le ponemos la etiqueta VIP SOLO a las elegidas
+        if fixed_node and fixed_node.currentNode():
+            fixed_node.currentNode().SetAttribute("RadReirradiationUse", "True")
+
+        if moving_node and moving_node.currentNode():
+            moving_node.currentNode().SetAttribute("RadReirradiationUse", "True")
+
     def onRegisterButton(self):
         fixed_ct = self.fixed_ct_selector.currentNode()
         moving_ct = self.moving_ct_selector.currentNode()
         moving_dose = self.moving_dose_selector.currentNode()
         fixed_dose = self.fixed_dose_selector.currentNode()
         moving_rtstruct = self.moving_rtstruct_selector.currentNode()
+        fixed_rtstruct = self.fixed_rtstruct_selector.currentNode()
 
         # Leemos qué algoritmos quiere el usuario
         use_deformable = self.deformable_checkbox.isChecked()
@@ -786,7 +821,17 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                      windowTitle="Data is missing")
             return
 
-
+        # =======================================================
+        # BARRERA DE SEGURIDAD INTERLOCK (Anti-Error Humano)
+        # =======================================================
+        if fixed_rtstruct and moving_rtstruct:
+            if fixed_rtstruct.GetID() == moving_rtstruct.GetID():
+                slicer.util.errorDisplay(
+                    "CRITICAL ERROR: El set de estructuras fijas (Current) y móviles (Prev) no pueden ser el mismo.\n\n"
+                    "Por seguridad, el proceso se ha detenido para evitar deformar las estructuras actuales.",
+                    windowTitle="Validación Interlock"
+                )
+                return
 
         try:
             # Mensajes de estado dinámicos
