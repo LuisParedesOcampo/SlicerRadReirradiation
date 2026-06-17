@@ -66,6 +66,22 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "The Dose (RD) from the previous treatment RT1 that you want to align to the new grid.")
         registrationFormLayout.addRow("RTDOSE previous treatment RT1 (Moving): ", self.moving_dose_selector)
 
+        # Selector seguro para las estructuras del TAC móvil
+        self.moving_rtstruct_selector = slicer.qMRMLNodeComboBox()
+        self.moving_rtstruct_selector.nodeTypes = ["vtkMRMLSegmentationNode"]
+        self.moving_rtstruct_selector.selectNodeUponCreation = False
+        self.moving_rtstruct_selector.addEnabled = False
+        self.moving_rtstruct_selector.removeEnabled = False
+        self.moving_rtstruct_selector.noneEnabled = True
+        self.moving_rtstruct_selector.showHidden = False
+        self.moving_rtstruct_selector.showChildNodeTypes = False
+        self.moving_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
+        self.moving_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC móvil")
+
+        # Agrega esta línea junto a las demás filas de tu formulario
+        # (Asegúrate de cambiar 'parametersFormLayout' por el nombre real de tu variable de diseño si es diferente)
+        registrationFormLayout.addRow("Moving RTSTRUCT (Prev): ", self.moving_rtstruct_selector)
+
         # Selector: CT RT2 tratamiento Fijo (Nuevo)
         self.fixed_ct_selector = slicer.qMRMLNodeComboBox()
         self.fixed_ct_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
@@ -758,6 +774,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         moving_ct = self.moving_ct_selector.currentNode()
         moving_dose = self.moving_dose_selector.currentNode()
         fixed_dose = self.fixed_dose_selector.currentNode()
+        moving_rtstruct = self.moving_rtstruct_selector.currentNode()
 
         # Leemos qué algoritmos quiere el usuario
         use_deformable = self.deformable_checkbox.isChecked()
@@ -781,15 +798,49 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 slicer.util.showStatusMessage("Running Rigid Registration...")
 
             # =======================================================
-            # 2. LLAMAR A LA LÓGICA (Añadimos use_manual_only al final)
+            # 2. LLAMAR A LA LÓGICA (obtenemos dosis y matrix de de transformacion)
             # =======================================================
-            aligned_dose_node = self.logic.runFastRegistration(
+            aligned_dose_node, transform_node = self.logic.runFastRegistration(
                 fixed_ct, moving_ct, moving_dose, fixed_dose,
                 use_deformable, use_affine, self.manual_transform_node, use_manual_only
             )
 
             if not aligned_dose_node:
                 return  # Si falló algo en la lógica, paramos.
+
+            # =======================================================
+            # 2.5 NUEVO: ALINEAR, DIFERENCIAR Y RENOMBRAR ESTRUCTURAS MÓVILES
+            # =======================================================
+            moving_rtstruct = self.moving_rtstruct_selector.currentNode()
+
+            if moving_rtstruct and transform_node:
+                # A. Aplicar la matriz matemática a las estructuras móviles
+                moving_rtstruct.SetAndObserveTransformNodeID(transform_node.GetID())
+
+                # B. Diferenciación Visual: Contornos huecos
+                display_node = moving_rtstruct.GetDisplayNode()
+                if display_node:
+                    display_node.SetVisibility(True)
+                    display_node.SetVisibility2D(True)
+                    display_node.SetVisibility2DFill(False)
+                    display_node.SetVisibility2DOutline(True)
+                    display_node.SetSliceIntersectionThickness(3)
+
+                # C. MAGIA PARA EL DVH: Renombrar los segmentos internos
+                segmentation = moving_rtstruct.GetSegmentation()
+                for i in range(segmentation.GetNumberOfSegments()):
+                    segment_id = segmentation.GetNthSegmentID(i)
+                    segment = segmentation.GetSegment(segment_id)
+                    current_name = segment.GetName()
+
+                    # Evitar que se agregue _PREV múltiples veces si el usuario registra dos veces
+                    if not current_name.endswith("_PREV"):
+                        segment.SetName(current_name + "_PREV")
+
+                # D. Renombrar el nodo padre para que en la interfaz también sea obvio
+                parent_name = moving_rtstruct.GetName()
+                if not parent_name.endswith("_REGISTERED"):
+                    moving_rtstruct.SetName(parent_name + "_REGISTERED")
 
             # =======================================================
             # 3. MAGIA UX: Asignación al Paso 2
@@ -818,99 +869,131 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 display_node.SetVisibility(True)
                 display_node.SetVisibility2D(True)
 
-                # Ajustamos la opacidad para que no tape el mapa de calor de tu dosis
-                display_node.SetOpacity2DFill(0.3)
-                display_node.SetOpacity2DOutline(1.0)
-
-            slicer.util.showStatusMessage("Structures successfully linked to the table!")
+                # =======================================================
+                # 3. MAGIA LÓGICA: ¿Es la estructura fija o la móvil?
+                # =======================================================
+                if node.GetTransformNodeID():
+                    # Opción A: Tiene transformación (Es RS PREVIOUS registrada)
+                    # La hacemos hueca y con bordes gruesos
+                    display_node.SetVisibility2DFill(False)
+                    display_node.SetVisibility2DOutline(True)
+                    display_node.SetSliceIntersectionThickness(3)
+                    slicer.util.showStatusMessage("Showing Registered Moving Structures (Outline)")
+                else:
+                    # Opción B: No tiene transformación (Es RS CURRENT fija)
+                    # Le damos el aspecto clínico estándar de Slicer (relleno transparente)
+                    display_node.SetVisibility2DFill(True)
+                    display_node.SetOpacity2DFill(0.3)
+                    display_node.SetOpacity2DOutline(1.0)
+                    display_node.SetSliceIntersectionThickness(1)
+                    slicer.util.showStatusMessage("Showing Base Fixed Structures (Filled)")
 
         else:
             # Si se selecciona "None", vaciamos la tabla
             self.segments_table.setSegmentationNode(None)
 
     def onHideAllStructures(self):
-        slicer.util.showStatusMessage("Toggling individual structures...")
+        slicer.util.showStatusMessage("Coordinating visibility for all structures...")
         slicer.app.processEvents()
 
         segmentation_nodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
+
+        # =======================================================
+        # PASO 1: Evaluación Global (¿Hay ALGO encendido en la escena?)
+        # =======================================================
+        global_any_visible = False
+
+        for node in segmentation_nodes:
+            display_node = node.GetDisplayNode()
+            if display_node:
+                segmentation = node.GetSegmentation()
+                for i in range(segmentation.GetNumberOfSegments()):
+                    segment_id = segmentation.GetNthSegmentID(i)
+                    if display_node.GetSegmentVisibility(segment_id):
+                        global_any_visible = True
+                        break  # Encontramos uno encendido, dejamos de buscar el primer set
+            if global_any_visible:
+                break  # Rompemos el ciclo principal, ya tenemos nuestra respuesta global
+
+        # =======================================================
+        # PASO 2: Acción Sincronizada (Aplicar a todos usando la decisión GLOBAL)
+        # =======================================================
         for node in segmentation_nodes:
             display_node = node.GetDisplayNode()
             if display_node:
                 # 1. OBLIGATORIO: Mantener el contenedor padre encendido para que la tabla funcione
                 display_node.SetVisibility(True)
 
-                # 2. Determinar si hay al menos un "ojito" encendido internamente
-                any_visible = False
-                segmentation = node.GetSegmentation()
-                for i in range(segmentation.GetNumberOfSegments()):
-                    segment_id = segmentation.GetNthSegmentID(i)
-                    if display_node.GetSegmentVisibility(segment_id):
-                        any_visible = True
-                        break
-
-                # 3. Sincronizar la interfaz: Apagar o encender TODOS los ojitos individuales
-                if any_visible:
+                # 2. Sincronizar la interfaz basándonos estrictamente en el estado global
+                if global_any_visible:
+                    # Si había al menos una estructura visible en toda la escena, la orden para TODOS es apagar
                     display_node.SetAllSegmentsVisibility(False)
                 else:
+                    # Si absolutamente todo estaba oculto en la escena, la orden para TODOS es encender
                     display_node.SetAllSegmentsVisibility(True)
 
         slicer.util.showStatusMessage("")
 
     def onLoadStructuresForBiology(self):
-        """Lee el Panel 2 y genera la tabla de roles solo con las estructuras visibles."""
-        segmentation_node = self.rtstruct_selector.currentNode()
-        if not segmentation_node:
-            slicer.util.warningDisplay("Please select an RTSTRUCT in Panel 2 first.")
-            return
+        """Lee TODOS los sets de estructuras en la escena y genera la tabla solo con las visibles."""
+        # 1. Buscamos todos los nodos de segmentación en la escena en lugar de usar un solo selector
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
 
-        segmentation = segmentation_node.GetSegmentation()
-        display_node = segmentation_node.GetDisplayNode()
+        if not segmentation_nodes:
+            slicer.util.warningDisplay("No RTSTRUCTs found in the scene.")
+            return
 
         # Limpiamos la tabla en caso de que el usuario vuelva a presionar el botón
         self.bio_table.setRowCount(0)
         row = 0
 
-        for i in range(segmentation.GetNumberOfSegments()):
-            segment_id = segmentation.GetNthSegmentID(i)
+        # 2. Recorremos TODOS los sets de estructuras encontrados (Fijos, Móviles, etc.)
+        for segmentation_node in segmentation_nodes:
+            segmentation = segmentation_node.GetSegmentation()
+            display_node = segmentation_node.GetDisplayNode()
 
-            # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
-            if display_node and display_node.GetSegmentVisibility(segment_id):
-                segment_name = segmentation.GetSegment(segment_id).GetName()
+            if not display_node:
+                continue
 
-                self.bio_table.insertRow(row)
+            # 3. Recorremos los órganos internos de este set específico
+            for i in range(segmentation.GetNumberOfSegments()):
+                segment_id = segmentation.GetNthSegmentID(i)
 
-                # Columna 0: Nombre de la estructura (Solo lectura)
-                name_item = qt.QTableWidgetItem(segment_name)
-                name_item.setFlags(name_item.flags() & ~qt.Qt.ItemIsEditable)
-                self.bio_table.setItem(row, 0, name_item)
+                # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
+                if display_node.GetSegmentVisibility(segment_id):
+                    segment_name = segmentation.GetSegment(segment_id).GetName()
 
-                # Columna 1: Menú de Rol (OAR / Tumor)
-                role_combo = qt.QComboBox()
-                role_combo.addItems(["OAR", "Tumor"])
-                role_combo.setStyleSheet("background-color: white; color: black;")
-                self.bio_table.setCellWidget(row, 1, role_combo)
+                    self.bio_table.insertRow(row)
 
-                # Columna 2: Menú de Prioridad
-                priority_combo = qt.QComboBox()
-                priority_combo.addItems(["OAR", "Tumor"])
-                priority_combo.setStyleSheet("background-color: #ecf0f1; color: black;")
-                self.bio_table.setCellWidget(row, 2, priority_combo)
+                    # Columna 0: Nombre de la estructura (Solo lectura)
+                    name_item = qt.QTableWidgetItem(segment_name)
+                    name_item.setFlags(name_item.flags() & ~qt.Qt.ItemIsEditable)
+                    self.bio_table.setItem(row, 0, name_item)
 
-                # Usamos lambda para asegurar que pasamos el 'priority_combo' exacto de esta fila
-                # Pasamos AMBOS combos (el de rol y el de prioridad) a la función externa
-                role_combo.connect("currentTextChanged(QString)",
-                                   lambda text, r_combo=role_combo, p_combo=priority_combo: self.onRoleStyleUpdate(text,
-                                                                                                                   r_combo,
-                                                                                                                   p_combo))
+                    # Columna 1: Menú de Rol (OAR / Tumor)
+                    role_combo = qt.QComboBox()
+                    role_combo.addItems(["OAR", "Tumor"])
+                    role_combo.setStyleSheet("background-color: white; color: black;")
+                    self.bio_table.setCellWidget(row, 1, role_combo)
 
-                row += 1
+                    # Columna 2: Menú de Prioridad
+                    priority_combo = qt.QComboBox()
+                    priority_combo.addItems(["OAR", "Tumor"])
+                    priority_combo.setStyleSheet("background-color: #ecf0f1; color: black;")
+                    self.bio_table.setCellWidget(row, 2, priority_combo)
+
+                    # Conexión de señales para los estilos
+                    role_combo.connect("currentTextChanged(QString)",
+                                       lambda text, r_combo=role_combo, p_combo=priority_combo: self.onRoleStyleUpdate(
+                                           text, r_combo, p_combo))
+
+                    row += 1
 
         if row > 0:
             slicer.util.showStatusMessage(f"Success: {row} structures loaded for biological setup.")
         else:
             slicer.util.warningDisplay(
-                "No visible structures found. Please turn on the 'eye' icon for at least one structure in Panel 2.")
-
+                "No visible structures found. Please turn on the 'eye' icon for at least one structure in your panels.")
     def onRoleStyleUpdate(self, text, r_combo, p_combo):
         """Actualiza visualmente los menús de rol y prioridad basado en la selección."""
         if text == "Tumor":
@@ -963,7 +1046,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return bio_config
 
     def onCalculateMetrics(self):
-        """Calcula métricas forzando la actualización de los datos de dosis visibles"""
+        """Calcula métricas forzando la actualización de los datos de dosis visibles en toda la escena"""
         import numpy as np
 
         # Identificar el volumen activo en el visor rojo
@@ -983,13 +1066,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.util.showStatusMessage(f"Calculating about: {eqd2_dose_node.GetName()}...")
         slicer.app.processEvents()
 
-        segmentation_node = self.rtstruct_selector.currentNode()
-        if not segmentation_node:
-            slicer.util.warningDisplay("Select a valid RTSTRUCT in Panel 2.")
+        # ==========================================================
+        # ESCÁNER GLOBAL: Buscamos TODOS los sets de estructuras
+        # ==========================================================
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+        if not segmentation_nodes:
+            slicer.util.warningDisplay("No RTSTRUCTs found in the scene.")
             return
-
-        segmentation = segmentation_node.GetSegmentation()
-        display_node = segmentation_node.GetDisplayNode()
 
         self.metrics_table.setRowCount(0)
         row = 0
@@ -997,39 +1080,49 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # EXTRAER LA MATRIZ DE DOSIS ACTUALIZADA
         dose_array = slicer.util.arrayFromVolume(eqd2_dose_node)
 
-        for i in range(segmentation.GetNumberOfSegments()):
-            segment_id = segmentation.GetNthSegmentID(i)
-            if display_node and not display_node.GetSegmentVisibility(segment_id):
+        # Recorremos cada set de estructuras encontrado
+        for segmentation_node in segmentation_nodes:
+            segmentation = segmentation_node.GetSegmentation()
+            display_node = segmentation_node.GetDisplayNode()
+
+            if not display_node:
                 continue
 
-            segment_name = segmentation.GetSegment(segment_id).GetName()
+            # Recorremos los órganos internos de este set
+            for i in range(segmentation.GetNumberOfSegments()):
+                segment_id = segmentation.GetNthSegmentID(i)
 
-            # Resamplear el segmento a la resolución del NUEVO volumen de dosis
-            segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id, eqd2_dose_node)
+                # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
+                if display_node.GetSegmentVisibility(segment_id):
+                    segment_name = segmentation.GetSegment(segment_id).GetName()
 
-            if segment_array is not None:
-                organ_dose_values = dose_array[segment_array > 0]
-                if len(organ_dose_values) > 0:
-                    max_dose = np.max(organ_dose_values)
-                    mean_dose = np.mean(organ_dose_values)
+                    # Resamplear el segmento a la resolución del NUEVO volumen de dosis
+                    segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
+                                                                               eqd2_dose_node)
 
-                    self.metrics_table.insertRow(row)
-                    self.metrics_table.setItem(row, 0, qt.QTableWidgetItem(segment_name))
+                    if segment_array is not None:
+                        organ_dose_values = dose_array[segment_array > 0]
+                        if len(organ_dose_values) > 0:
+                            max_dose = np.max(organ_dose_values)
+                            mean_dose = np.mean(organ_dose_values)
 
-                    item_max = qt.QTableWidgetItem(f"{max_dose:.2f}")
-                    item_max.setTextAlignment(qt.Qt.AlignCenter)
-                    self.metrics_table.setItem(row, 1, item_max)
+                            self.metrics_table.insertRow(row)
+                            self.metrics_table.setItem(row, 0, qt.QTableWidgetItem(segment_name))
 
-                    item_mean = qt.QTableWidgetItem(f"{mean_dose:.2f}")
-                    item_mean.setTextAlignment(qt.Qt.AlignCenter)
-                    self.metrics_table.setItem(row, 2, item_mean)
+                            item_max = qt.QTableWidgetItem(f"{max_dose:.2f}")
+                            item_max.setTextAlignment(qt.Qt.AlignCenter)
+                            self.metrics_table.setItem(row, 1, item_max)
 
-                    row += 1
+                            item_mean = qt.QTableWidgetItem(f"{mean_dose:.2f}")
+                            item_mean.setTextAlignment(qt.Qt.AlignCenter)
+                            self.metrics_table.setItem(row, 2, item_mean)
+
+                            row += 1
 
         slicer.util.showStatusMessage("Metrics updated correctly.")
 
     def onGenerateDVH(self):
-        """Genera el DVH eliminando datos previos de la escena"""
+        """Genera el DVH usando todas las estructuras visibles en la escena"""
         import numpy as np
         import vtk
 
@@ -1047,7 +1140,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================
         # LIMPIEZA PROFUNDA (GARBAGE COLLECTOR)
         # ==========================================================
-        # Borramos Chart, Tablas y Series previas para no saturar la RAM ni el panel de datos
         nodes_to_delete = slicer.util.getNodesByClass("vtkMRMLPlotChartNode") + \
                           slicer.util.getNodesByClass("vtkMRMLTableNode") + \
                           slicer.util.getNodesByClass("vtkMRMLPlotSeriesNode")
@@ -1058,62 +1150,72 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================
 
         plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "DVH_EQD2_Chart")
-        # Le ponemos el nombre del volumen actual al título del gráfico para que sepas qué estás viendo
         plotChartNode.SetTitle(f"Dose Volume Histogram ({eqd2_dose_node.GetName()})")
         plotChartNode.SetXAxisTitle("Dose EQD2 (Gy)")
         plotChartNode.SetYAxisTitle("Relative Volume (%)")
 
-        segmentation_node = self.rtstruct_selector.currentNode()
-        if not segmentation_node: return
-
-        segmentation = segmentation_node.GetSegmentation()
-        display_node = segmentation_node.GetDisplayNode()
+        # ==========================================================
+        # ESCÁNER GLOBAL: Buscamos TODOS los sets de estructuras
+        # ==========================================================
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+        if not segmentation_nodes:
+            return
 
         dose_array = slicer.util.arrayFromVolume(eqd2_dose_node)
 
-        for i in range(segmentation.GetNumberOfSegments()):
-            segment_id = segmentation.GetNthSegmentID(i)
-            if display_node and not display_node.GetSegmentVisibility(segment_id):
+        # Recorremos cada set de estructuras encontrado
+        for segmentation_node in segmentation_nodes:
+            segmentation = segmentation_node.GetSegmentation()
+            display_node = segmentation_node.GetDisplayNode()
+
+            if not display_node:
                 continue
 
-            segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id, eqd2_dose_node)
-            if segment_array is None: continue
+            # Recorremos los órganos internos de este set
+            for i in range(segmentation.GetNumberOfSegments()):
+                segment_id = segmentation.GetNthSegmentID(i)
 
-            organ_dose_values = dose_array[segment_array > 0]
-            if len(organ_dose_values) == 0: continue
+                # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
+                if display_node.GetSegmentVisibility(segment_id):
+                    segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
+                                                                               eqd2_dose_node)
+                    if segment_array is None: continue
 
-            # Cálculo de DVH
-            max_dose = np.max(organ_dose_values)
-            bins = np.arange(0, max_dose + 0.2, 0.1)
-            hist, _ = np.histogram(organ_dose_values, bins=bins)
-            cum_vol_percent = (np.cumsum(hist[::-1])[::-1] / len(organ_dose_values)) * 100.0
+                    organ_dose_values = dose_array[segment_array > 0]
+                    if len(organ_dose_values) == 0: continue
 
-            # Crear Tabla Única
-            segment_name = segmentation.GetSegment(segment_id).GetName()
-            color = segmentation.GetSegment(segment_id).GetColor()
+                    # Cálculo de DVH
+                    max_dose = np.max(organ_dose_values)
+                    bins = np.arange(0, max_dose + 0.2, 0.1)
+                    hist, _ = np.histogram(organ_dose_values, bins=bins)
+                    cum_vol_percent = (np.cumsum(hist[::-1])[::-1] / len(organ_dose_values)) * 100.0
 
-            tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", f"DVH_Data_{segment_name}")
-            dose_col = vtk.vtkDoubleArray();
-            dose_col.SetName("Dose")
-            vol_col = vtk.vtkDoubleArray();
-            vol_col.SetName("Volume")
+                    # Crear Tabla Única
+                    segment_name = segmentation.GetSegment(segment_id).GetName()
+                    color = segmentation.GetSegment(segment_id).GetColor()
 
-            for d, v in zip(bins[:-1], cum_vol_percent):
-                dose_col.InsertNextValue(d)
-                vol_col.InsertNextValue(v)
+                    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", f"DVH_Data_{segment_name}")
+                    dose_col = vtk.vtkDoubleArray()
+                    dose_col.SetName("Dose")
+                    vol_col = vtk.vtkDoubleArray()
+                    vol_col.SetName("Volume")
 
-            tableNode.AddColumn(dose_col)
-            tableNode.AddColumn(vol_col)
+                    for d, v in zip(bins[:-1], cum_vol_percent):
+                        dose_col.InsertNextValue(d)
+                        vol_col.InsertNextValue(v)
 
-            seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", segment_name)
-            seriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-            seriesNode.SetXColumnName("Dose")
-            seriesNode.SetYColumnName("Volume")
-            seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-            seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleNone)
-            seriesNode.SetColor(color[0], color[1], color[2])
+                    tableNode.AddColumn(dose_col)
+                    tableNode.AddColumn(vol_col)
 
-            plotChartNode.AddAndObservePlotSeriesNodeID(seriesNode.GetID())
+                    seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", segment_name)
+                    seriesNode.SetAndObserveTableNodeID(tableNode.GetID())
+                    seriesNode.SetXColumnName("Dose")
+                    seriesNode.SetYColumnName("Volume")
+                    seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+                    seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleNone)
+                    seriesNode.SetColor(color[0], color[1], color[2])
+
+                    plotChartNode.AddAndObservePlotSeriesNodeID(seriesNode.GetID())
 
         # Configurar Layout y mostrar
         layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotView)
@@ -1330,7 +1432,14 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
 
             slicer.util.setSliceViewerLayers(background=fixed_ct, foreground=moving_ct, foregroundOpacity=0.5)
 
-            return outputDose
+            # ==========================================================
+            # 9. RETORNAR RESULTADOS A LA INTERFAZ (Dosis y Matriz)
+            # ==========================================================
+            # Evaluamos qué matriz de movimiento se usó realmente
+            # (la automática de BRAINSFit o la manual de las barras)
+            applied_transform = final_transform if not use_manual_only else manual_transform
+
+            return outputDose, applied_transform
 
         finally:
             # ==========================================================
