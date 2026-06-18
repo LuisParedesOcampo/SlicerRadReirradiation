@@ -43,28 +43,35 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 1: IMAGE REGISTRATION
         # ==========================================================================================================
         registrationCollapsibleButton = ctk.ctkCollapsibleButton()
-        registrationCollapsibleButton.text = "Image Registration and Dose Resample "
+        registrationCollapsibleButton.text = "1: Load Reirradiation Data"
         registrationCollapsibleButton.collapsed = False  # Que inicie abierto
         self.layout.addWidget(registrationCollapsibleButton)
+
+        # Layout principal del panel
         registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
+
+        # =======================================================
+        # GRUPO 1: DATOS PREVIOS (MÓVILES)
+        # =======================================================
+        rt1_groupBox = qt.QGroupBox("RT1: Previous Treatment (Moving)")
+        rt1_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        rt1_layout = qt.QFormLayout(rt1_groupBox)
 
         # Selector: CT RT1 Tratamiento Móvil (Antiguo)
         self.moving_ct_selector = slicer.qMRMLNodeComboBox()
         self.moving_ct_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        #  self.moving_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "DICOM.Modality", "CT")
         self.moving_ct_selector.setMRMLScene(slicer.mrmlScene)
         self.moving_ct_selector.setToolTip("CT from the previous treatment RT1 (Moving).")
-        registrationFormLayout.addRow("CT from previous treatment RT1 (Moving): ", self.moving_ct_selector)
+        rt1_layout.addRow("CT Volume: ", self.moving_ct_selector)
 
         # Selector: Dosis Antigua (A remuestrear)
         self.moving_dose_selector = slicer.qMRMLNodeComboBox()
         self.moving_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        #  self.moving_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "DICOM.Modality", "RTDOSE")
         self.moving_dose_selector.showChildNodeTypes = True  # Vital para ver RTDOSE
         self.moving_dose_selector.setMRMLScene(slicer.mrmlScene)
         self.moving_dose_selector.setToolTip(
             "The Dose (RD) from the previous treatment RT1 that you want to align to the new grid.")
-        registrationFormLayout.addRow("RTDOSE previous treatment RT1 (Moving): ", self.moving_dose_selector)
+        rt1_layout.addRow("Dose (RTDOSE): ", self.moving_dose_selector)
 
         # Selector para las estructuras del TAC móvil (Prev)
         self.moving_rtstruct_selector = slicer.qMRMLNodeComboBox()
@@ -75,25 +82,33 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.moving_rtstruct_selector.noneEnabled = True
         self.moving_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
         self.moving_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC móvil previo")
-        registrationFormLayout.addRow("RTSTRUCT previous treatment RT1 (Moving): ", self.moving_rtstruct_selector)
+        rt1_layout.addRow("Structures (RTSTRUCT): ", self.moving_rtstruct_selector)
+
+        # Añadimos el Grupo 1 completo al layout principal
+        registrationFormLayout.addRow(rt1_groupBox)
+
+        # =======================================================
+        # GRUPO 2: DATOS ACTUALES (FIJOS)
+        # =======================================================
+        rt2_groupBox = qt.QGroupBox("RT2: Current Plan (Fixed)")
+        rt2_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        rt2_layout = qt.QFormLayout(rt2_groupBox)
 
         # Selector: CT RT2 tratamiento Fijo (Nuevo)
         self.fixed_ct_selector = slicer.qMRMLNodeComboBox()
         self.fixed_ct_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        #  self.fixed_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "DICOM.Modality", "CT")
         self.fixed_ct_selector.setMRMLScene(slicer.mrmlScene)
         self.fixed_ct_selector.setToolTip("CT from the planned treatment RT2 (Fixed).")
-        registrationFormLayout.addRow("CT from planned treatment RT2 (Fixed): ", self.fixed_ct_selector)
+        rt2_layout.addRow("CT Volume: ", self.fixed_ct_selector)
 
         # Selector: Dosis Nueva (Para usar su cuadrícula como molde)
         self.fixed_dose_selector = slicer.qMRMLNodeComboBox()
         self.fixed_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        #  self.fixed_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "DICOM.Modality", "RTDOSE")
         self.fixed_dose_selector.showChildNodeTypes = True
         self.fixed_dose_selector.setMRMLScene(slicer.mrmlScene)
         self.fixed_dose_selector.setToolTip(
             "The Dosage of the NEW plan. Its geometric matrix will be used as a template.")
-        registrationFormLayout.addRow("RTDOSE planned treatment RT2 (Fixed): ", self.fixed_dose_selector)
+        rt2_layout.addRow("Dose (RTDOSE): ", self.fixed_dose_selector)
 
         # Selector de seguridad para las estructuras del TAC fijo (Current)
         self.fixed_rtstruct_selector = slicer.qMRMLNodeComboBox()
@@ -104,14 +119,20 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_rtstruct_selector.noneEnabled = True
         self.fixed_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
         self.fixed_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC fijo actual")
-        registrationFormLayout.addRow("RTSTRUCT planned treatment RT2 (Fixed): ", self.fixed_rtstruct_selector)
+        rt2_layout.addRow("Structures (RTSTRUCT): ", self.fixed_rtstruct_selector)
 
+        # Añadimos el Grupo 2 completo al layout principal
+        registrationFormLayout.addRow(rt2_groupBox)
+
+        # =======================================================
+        # CONEXIONES DE SEÑALES
+        # =======================================================
         self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
         self.moving_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
 
         # --- NUEVO: Panel Seguro de Pre-Alineación Manual ---
         self.preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
-        self.preAlignCollapsibleButton.text = "1. Manual Pre-Alignment (Translate)"
+        self.preAlignCollapsibleButton.text = "1.2: Pre-Alignment, Image Registration and Dose resample "
         registrationFormLayout.addRow(self.preAlignCollapsibleButton)
         preAlignLayout = qt.QFormLayout(self.preAlignCollapsibleButton)
 
@@ -303,15 +324,22 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 3: REIRRADIATION ANALYSIS
         # ========================================================================================================================================
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "3. Reirradiation Calculation Settings"  # Mismo nombre que el sidebar de Streamlit
+        parametersCollapsibleButton.text = "3: Reirradiation Calculation Settings"
         self.layout.addWidget(parametersCollapsibleButton)
+
+        # Layout principal del panel
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # --- 1. Dose Volume Selectors ---
+        # =======================================================
+        # GRUPO 1: VOLÚMENES DE DOSIS (INPUTS)
+        # =======================================================
+        doses_groupBox = qt.QGroupBox("3.1: Dose Volumes")
+        doses_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        doses_layout = qt.QFormLayout(doses_groupBox)
+
         # Selector for Dose A (RT1)
         self.dose_a_selector = slicer.qMRMLNodeComboBox()
         self.dose_a_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        # self.dose_a_selector.addAttribute("vtkMRMLScalarVolumeNode", "DICOM.Modality", "RTDOSE")
         self.dose_a_selector.selectNodeUponCreation = True
         self.dose_a_selector.addEnabled = False
         self.dose_a_selector.removeEnabled = False
@@ -319,14 +347,12 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dose_a_selector.showHidden = False
         self.dose_a_selector.showChildNodeTypes = True
         self.dose_a_selector.setMRMLScene(slicer.mrmlScene)
-        self.dose_a_selector.setToolTip(
-            "Select the dose matrix for the Previous Radiation Course (RT1).It is recommended to use the resampled dose obtained from the rigid/deformable registration algorithms")
-        parametersFormLayout.addRow("RTDOSE Previous Treatment (RT1): ", self.dose_a_selector)
+        self.dose_a_selector.setToolTip("Select the dose matrix for the Previous Radiation Course (RT1).")
+        doses_layout.addRow("RD Previous (RT1) (Resampled) : ", self.dose_a_selector)
 
         # Selector for Dose B (RT2)
         self.dose_b_selector = slicer.qMRMLNodeComboBox()
         self.dose_b_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        #  self.dose_b_selector.addAttribute("vtkMRMLScalarVolumeNode", "DICOM.Modality", "RTDOSE")
         self.dose_b_selector.selectNodeUponCreation = True
         self.dose_b_selector.addEnabled = False
         self.dose_b_selector.removeEnabled = False
@@ -335,67 +361,103 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dose_b_selector.showChildNodeTypes = True
         self.dose_b_selector.setMRMLScene(slicer.mrmlScene)
         self.dose_b_selector.setToolTip("Select the dose matrix for the Planned Radiation Course (RT2).")
-        parametersFormLayout.addRow("RTDOSE Planned Treatment (RT2): ", self.dose_b_selector)
+        doses_layout.addRow("RD Planned (RT2): ", self.dose_b_selector)
 
-        # --- 2. Radiobiological Parameters (Smart Defaults) ---
+        # Añadimos el Grupo 1 al layout principal
+        parametersFormLayout.addRow(doses_groupBox)
+
+        # =======================================================
+        # GRUPO 2: PARÁMETROS BIOLÓGICOS Y DE FRACCIONAMIENTO
+        # =======================================================
+        bio_groupBox = qt.QGroupBox("3.2: Biological & Fractionation Parameters")
+        bio_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        bio_layout = qt.QFormLayout(bio_groupBox)
+
+        # SpinBox for fractions_a (RT1)
+        self.fractions_a_spinbox = qt.QSpinBox()
+        self.fractions_a_spinbox.setValue(25)
+        self.fractions_a_spinbox.setMaximum(100)
+        bio_layout.addRow("Fractions (RT1): ", self.fractions_a_spinbox)
+
+        # SpinBox for fractions_b (RT2)
+        self.fractions_b_spinbox = qt.QSpinBox()
+        self.fractions_b_spinbox.setValue(10)
+        self.fractions_b_spinbox.setMaximum(100)
+        bio_layout.addRow("Fractions (RT2): ", self.fractions_b_spinbox)
+
         # SpinBox for Alpha/Beta Ratio fo OARs (ab)
         self.ab_spinbox = qt.QDoubleSpinBox()
         self.ab_spinbox.setValue(3.0)
         self.ab_spinbox.setDecimals(1)
         self.ab_spinbox.setToolTip("Alpha/Beta Ratio (\u03b1/\u03b2) Organs at risk (OARs) (Gy).")
-        parametersFormLayout.addRow("Alpha/Beta Ratio (\u03b1/\u03b2) OARs (Gy): ", self.ab_spinbox)
+        bio_layout.addRow("\u03b1/\u03b2 Ratio OARs (Gy): ", self.ab_spinbox)
 
         # SpinBox for Alpha/Beta Ratio for Tumor (ab)
         self.ab_tumor_spinbox = qt.QDoubleSpinBox()
         self.ab_tumor_spinbox.setValue(10)
         self.ab_tumor_spinbox.setDecimals(1)
         self.ab_tumor_spinbox.setToolTip("Alpha/Beta Ratio (\u03b1/\u03b2) Tumor (Gy).")
-        parametersFormLayout.addRow("Alpha/Beta Ratio (\u03b1/\u03b2) Tumor (Gy): ", self.ab_tumor_spinbox)
+        bio_layout.addRow("\u03b1/\u03b2 Ratio Tumor (Gy): ", self.ab_tumor_spinbox)
 
-        # SpinBox for fractions_a (RT1)
-        self.fractions_a_spinbox = qt.QSpinBox()
-        self.fractions_a_spinbox.setValue(25)  # Valor por defecto de tu main.py
-        self.fractions_a_spinbox.setMaximum(100)
-        parametersFormLayout.addRow("Number of Fractions RT1: ", self.fractions_a_spinbox)
+        # Añadimos el Grupo 2 al layout principal
+        parametersFormLayout.addRow(bio_groupBox)
 
-        # SpinBox for fractions_b (RT2)
-        self.fractions_b_spinbox = qt.QSpinBox()
-        self.fractions_b_spinbox.setValue(10)  # Valor por defecto de tu main.py para B
-        self.fractions_b_spinbox.setMaximum(100)
-        parametersFormLayout.addRow("Number of Fractions RT2: ", self.fractions_b_spinbox)
+        # =======================================================
+        # GRUPO 3: RECUPERACIÓN TISULAR Y SALIDA
+        # =======================================================
+        recovery_groupBox = qt.QGroupBox("3.3: Tissue Recovery & Output Configuration")
+        recovery_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        recovery_layout = qt.QFormLayout(recovery_groupBox)
 
-        # -Recovery Factor (Basado en RadReirradiation Streamlit) ---
+        # Recovery Factor Checkbox
         self.recovery_checkbox = qt.QCheckBox("Enable Partial Recovery (Time-based model)")
         self.recovery_checkbox.setChecked(False)
         self.recovery_checkbox.setToolTip(
             "The BED contribution from the previous irradiation course is reduced according its recovery assumption before being combined with the new treatment")
-        parametersFormLayout.addRow(self.recovery_checkbox)
+        recovery_layout.addRow(self.recovery_checkbox)
 
+        # Months Spinbox
         self.months_spinbox = qt.QSpinBox()
         self.months_spinbox.setRange(0, 100)
         self.months_spinbox.setValue(12)
         self.months_spinbox.setSuffix(" months")
-        self.months_spinbox.setEnabled(False)  # Inicia apagado hasta que marquen la casilla
-        parametersFormLayout.addRow("Time interval (RT1 to RT2): ", self.months_spinbox)
+        self.months_spinbox.setEnabled(False)  # Inicia apagado
+        recovery_layout.addRow("Time interval: ", self.months_spinbox)
 
-        # Conectar la casilla para que encienda o apague el selector de meses
-        self.recovery_checkbox.connect('toggled(bool)', self.months_spinbox.setEnabled)
-
-        # Configuración volumen de Salida ---
+        # Output Volume Name
         self.output_name_input = qt.QLineEdit()
         self.output_name_input.setPlaceholderText("Optional: Custom name for the new volume...")
-        self.output_name_input.setToolTip("If you leave it blank, it will use the default name..")
-        parametersFormLayout.addRow("Accumulated Dose Volume Name: ", self.output_name_input)
+        self.output_name_input.setToolTip("If you leave it blank, it will use the default name.")
+        recovery_layout.addRow("Output Dose Name: ", self.output_name_input)
 
-        # --- Apply Button ---
+        # Añadimos el Grupo 3 al layout principal
+        parametersFormLayout.addRow(recovery_groupBox)
+
+        # --- Conexión de la casilla de meses ---
+        self.recovery_checkbox.connect('toggled(bool)', self.months_spinbox.setEnabled)
+
+        # =======================================================
+        # BOTÓN DE CÁLCULO MAESTRO
+        # =======================================================
         self.applyButton = qt.QPushButton("Calculate Cumulative EQD2 Dose")
         self.applyButton.toolTip = "Execute the voxel-by-voxel BED/EQD2 accumulation."
-        self.applyButton.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.applyButton.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50; 
+                color: white; 
+                font-weight: bold; 
+                padding: 8px;
+                font-size: 12px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
         parametersFormLayout.addRow(self.applyButton)
 
         # Connect button to function
         self.applyButton.connect('clicked(bool)', self.onApplyButton)
-
         # ==========================================================
         # PANEL 4: ANÁLISIS DOSIMÉTRICO (EQD2 METRICS)
         # ==========================================================
@@ -895,7 +957,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             slicer.util.showStatusMessage("Registration and Dose resampling completed!")
             slicer.util.infoDisplay(
-                "Successful alignment.\n\nLook for the new Dose volume with the suffix '_Registered' in your Base Dose (RT1) list to perform the calculation.",
+                "Successful alignment.\n\nLook for the new Dose volume with the suffix '_Resampled' in your Base Dose (RT1) list to perform the calculation.",
                 windowTitle="RadReirradiation FastReg")
 
         except Exception as e:
@@ -1438,7 +1500,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             # (ESTO SE EJECUTA SIEMPRE, YA SEA MANUAL O AUTOMÁTICO)
             # ==========================================================
             # Preparar un volumen clonado vacío para recibir la nueva dosis deformada
-            output_dose_name = f"{moving_dose.GetName()}_Registered"
+            output_dose_name = f"{moving_dose.GetName()}_Resampled"
             volumesLogic = slicer.modules.volumes.logic()
 
             reference_volume = fixed_dose if fixed_dose else fixed_ct

@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales">
+    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="implementados mejoras a la visualizacion de estructuras y validaciones logicas">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/RadReirradiation.py" beforeDir="false" afterPath="$PROJECT_DIR$/RadReirradiation.py" afterDir="false" />
     </list>
@@ -24,6 +24,18 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;LuisParedesOcampo&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/LuisParedesOcampo/SlicerRadReirradiation&quot;,
+    &quot;accountId&quot;: &quot;4f7573b3-d965-4446-9e56-09b41b18b53c&quot;
+  }
+}</component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
@@ -40,20 +52,23 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;dev&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;D:/Documents/GitHub/SlicerRadReirradiation&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;aDefault&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "dev",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "D:/Documents/GitHub/SlicerRadReirradiation",
+    "run.code.analysis.last.selected.profile": "aDefault",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -68,6 +83,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1776973209408</updated>
+      <workItem from="1781783613252" duration="4367000" />
     </task>
     <task id="LOCAL-00001" summary="Rename extension to RadReirradiaton">
       <option name="closed" value="true" />
@@ -157,7 +173,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781730277557</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="implementados mejoras a la visualizacion de estructuras y validaciones logicas">
+      <option name="closed" value="true" />
+      <created>1781733908505</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1781733908505</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -172,6 +196,7 @@
     <MESSAGE value="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
     <MESSAGE value="feat: Implement voxel-based 3D Alpha/Beta biological masking&#10;&#10;- Added dynamic UI table for structure role assignment (OAR vs Tumor).&#10;- Implemented Boolean spatial masking with NumPy to resolve structure overlaps.&#10;- Upgraded EQD2 math engine to process 3D alpha/beta matrices via broadcasting.&#10;- Enforced strict clinical safety rules (OAR overrides Tumor in intersections by default).&#10;- Added UI state management for safe data extraction prior to calculation." />
     <MESSAGE value="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales" />
-    <option name="LAST_COMMIT_MESSAGE" value="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales" />
+    <MESSAGE value="implementados mejoras a la visualizacion de estructuras y validaciones logicas" />
+    <option name="LAST_COMMIT_MESSAGE" value="implementados mejoras a la visualizacion de estructuras y validaciones logicas" />
   </component>
 </project>
