@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="implementados mejoras a la visualizacion de estructuras y validaciones logicas">
+    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/RadReirradiation.py" beforeDir="false" afterPath="$PROJECT_DIR$/RadReirradiation.py" afterDir="false" />
     </list>
@@ -52,23 +52,24 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "dev",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "D:/Documents/GitHub/SlicerRadReirradiation",
-    "run.code.analysis.last.selected.profile": "aDefault",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;dev&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/Documents/GitHub/SlicerRadReirradiation&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;aDefault&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -83,7 +84,9 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1776973209408</updated>
-      <workItem from="1781783613252" duration="4367000" />
+      <workItem from="1781783613252" duration="4887000" />
+      <workItem from="1781870316148" duration="2479000" />
+      <workItem from="1782388990891" duration="5261000" />
     </task>
     <task id="LOCAL-00001" summary="Rename extension to RadReirradiaton">
       <option name="closed" value="true" />
@@ -181,7 +184,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781733908505</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz">
+      <option name="closed" value="true" />
+      <created>1781788522069</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1781788522069</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -197,6 +208,7 @@
     <MESSAGE value="feat: Implement voxel-based 3D Alpha/Beta biological masking&#10;&#10;- Added dynamic UI table for structure role assignment (OAR vs Tumor).&#10;- Implemented Boolean spatial masking with NumPy to resolve structure overlaps.&#10;- Upgraded EQD2 math engine to process 3D alpha/beta matrices via broadcasting.&#10;- Enforced strict clinical safety rules (OAR overrides Tumor in intersections by default).&#10;- Added UI state management for safe data extraction prior to calculation." />
     <MESSAGE value="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales" />
     <MESSAGE value="implementados mejoras a la visualizacion de estructuras y validaciones logicas" />
-    <option name="LAST_COMMIT_MESSAGE" value="implementados mejoras a la visualizacion de estructuras y validaciones logicas" />
+    <MESSAGE value="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz" />
+    <option name="LAST_COMMIT_MESSAGE" value="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz" />
   </component>
 </project>

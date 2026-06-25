@@ -509,6 +509,12 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # ==================================================================================================================
 
     def onCenterButtonClicked(self):
+
+        self.onHideAllStructures()
+        slicer.util.showStatusMessage("Structures Hidden for a clean start.")
+        # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
+        self.resetResultsDisplay()
+
         fixed_ct = self.fixed_ct_selector.currentNode()
         moving_ct = self.moving_ct_selector.currentNode()
 
@@ -594,9 +600,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sliderRoll.enabled = True
             self.sliderYaw.enabled = True
 
-            self.onHideAllStructures()
-            slicer.util.showStatusMessage("CTs Centered and Structures Hidden for a clean start.")
-
+            slicer.util.showStatusMessage("CTs Centered .")
 
         except Exception as e:
             slicer.util.errorDisplay(f"Error during Auto-Center: {str(e)}\nPlease check if the CT is fully loaded.")
@@ -866,6 +870,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             moving_node.currentNode().SetAttribute("RadReirradiationUse", "True")
 
     def onRegisterButton(self):
+
         fixed_ct = self.fixed_ct_selector.currentNode()
         moving_ct = self.moving_ct_selector.currentNode()
         moving_dose = self.moving_dose_selector.currentNode()
@@ -1042,6 +1047,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.util.showStatusMessage("")
 
     def onLoadStructuresForBiology(self):
+        # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
+        self.resetResultsDisplay()
         """Lee TODOS los sets de estructuras en la escena y genera la tabla solo con las visibles."""
         # 1. Buscamos todos los nodos de segmentación en la escena en lugar de usar un solo selector
         segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
