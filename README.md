@@ -8,15 +8,25 @@
 
 ## 🚀 What's New (Latest Update)
 
-### 1. Advanced Manual Registration & Smart Algorithm Bypass
+### 1. Structure-Specific Biological Roles & Dual Alpha/Beta (α/β)
+* **Interactive Roles Table:** A new Biological Configuration panel allows users to dynamically assign 'Tumor' or 'OAR' (Organ At Risk) roles to each visible structure.
+* **Simultaneous Dual α/β Calculation:** The module now supports computing EQD2/BED using two distinct α/β ratios simultaneously in a single run. This eliminates the need for repetitive workflows when evaluating both tumor control and late tissue toxicity.
+
+### 2. DVH Enhancements: Absolute vs. Relative Volume
+* **Volume Unit Toggle:** The Dose-Volume Histogram (DVH) now features a seamless toggle between Relative Volume (%) and Absolute Volume (cc). The algorithm extracts precise voxel spacing dimensions directly from the DICOM metadata for highly accurate volumetric rendering.
+
+### 3. Clinical Data Integrity (Auto-Reset UI)
+* **Active Safety Interlocks:** Implemented a strict "Reset Before Calculate" protocol. If any configuration parameter (e.g., α/β ratios, fractions, biological roles) is modified after a calculation, the metric tables and DVH plots are instantly cleared from the Slicer scene. This eliminates the clinical risk of misinterpreting residual dosimetric data.
+
+### 4. Advanced Manual Registration & Smart Algorithm Bypass
 * **Full 6-DOF Manual Control:** Added precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment. Includes a smart memory cache to ensure smooth rotations without origin-shift artifacts (the "needle effect").
-* **Smart BRAINSFit Protection:** To guarantee algorithmic stability, rotational controls are dynamically disabled and reset when using the Automatic Registration mode. This prevents `BRAINSFit` from failing due to extreme initial origin shifts.
+* **Smart BRAINSFit Protection:** To guarantee algorithmic stability, rotational controls are dynamically disabled and reset when using the Automatic Registration mode. 
 * **"Manual Only" Mode:** A progressive disclosure UI that allows users to bypass the intensive auto-registration engine completely, applying the manual transform directly to the dose and resampling it instantly.
 
-### 2. Clinical Data Integrity (Auto-Reset UI)
-* **Zero-Residual Data Architecture:** Implemented a strict "Reset Before Calculate" protocol. Metric tables and Dose-Volume Histograms (DVH) are instantly cleared from the Slicer scene the moment a new calculation is triggered. This eliminates the clinical risk of misinterpreting residual dosimetric data from previous calculations or patients.
-
 ## Features 🚀
+* **Structure-Specific Biological Roles:** Interactively assign 'Tumor' or 'OAR' roles to individual structures.
+* **Dual Alpha/Beta (α/β) Support:** Simultaneous EQD2 calculation using distinct ratios for tumors and OARs.
+* **Absolute & Relative DVH:** Toggle between Relative Volume (%) and Absolute Volume (cc).
 * **Interactive Manual Pre-Alignment:** Introduced a brand-new, safe manual pre-alignment panel. Users can now translate the Moving CT using intuitive sliders before running the automatic registration.
 * **Smart "Auto-Center" for CBCTs:** Added a one-click "Auto-Center CTs" button. It calculates the true RAS mathematical center of both datasets (bypassing FOV discrepancies common in Linac CBCTs) and teleports the images to match, automatically jumping all 2D slice views to the new target.
 * **Image Registration Wrapper:** Automated Rigid, Affine and Deformable (B-Spline) registration workflows using the BRAINSFit engine, eliminating the need to switch between multiple Slicer modules.
