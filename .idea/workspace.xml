@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz">
+    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="mejoraado el boton de generar roles">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/RadReirradiation.py" beforeDir="false" afterPath="$PROJECT_DIR$/RadReirradiation.py" afterDir="false" />
     </list>
@@ -30,12 +30,12 @@
     &quot;assignee&quot;: &quot;LuisParedesOcampo&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings">{
-  &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/LuisParedesOcampo/SlicerRadReirradiation&quot;,
-    &quot;accountId&quot;: &quot;4f7573b3-d965-4446-9e56-09b41b18b53c&quot;
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/LuisParedesOcampo/SlicerRadReirradiation",
+    "accountId": "193053d6-13a2-46b4-81e0-4fdfbf9b8ffd"
   }
-}</component>
+}]]></component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
@@ -93,7 +93,7 @@
       <workItem from="1782402548056" duration="1750000" />
       <workItem from="1782404318173" duration="2770000" />
       <workItem from="1782475256192" duration="1268000" />
-      <workItem from="1783429993290" duration="1580000" />
+      <workItem from="1783429993290" duration="2808000" />
     </task>
     <task id="LOCAL-00001" summary="Rename extension to RadReirradiaton">
       <option name="closed" value="true" />
@@ -199,7 +199,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781788522069</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="mejoraado el boton de generar roles">
+      <option name="closed" value="true" />
+      <created>1783431963044</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1783431963044</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -239,6 +247,7 @@
     <MESSAGE value="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales" />
     <MESSAGE value="implementados mejoras a la visualizacion de estructuras y validaciones logicas" />
     <MESSAGE value="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz" />
-    <option name="LAST_COMMIT_MESSAGE" value="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz" />
+    <MESSAGE value="mejoraado el boton de generar roles" />
+    <option name="LAST_COMMIT_MESSAGE" value="mejoraado el boton de generar roles" />
   </component>
 </project>

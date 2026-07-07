@@ -495,7 +495,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             qt.QHeaderView.Stretch)  # Ajusta las columnas al ancho
         metricsFormLayout.addRow(self.metrics_table)
 
-        # --- EL  BOTÓN PARA EL DVH ---
+        # --- SELECTOR DE UNIDADES PARA EL DVH ---
+        self.dvh_y_axis_combo = qt.QComboBox()
+        self.dvh_y_axis_combo.addItems(["Relative Volume (%)", "Absolute Volume (cc)"])
+        self.dvh_y_axis_combo.setStyleSheet("background-color: white; color: black;")
+        self.dvh_y_axis_combo.setToolTip("Select the unit for the Y-axis of the DVH.")
+        metricsFormLayout.addRow("DVH Volume Unit: ", self.dvh_y_axis_combo)
+
+        # --- EL BOTÓN PARA EL DVH ---
         self.plot_dvh_button = qt.QPushButton("Show DVH")
         self.plot_dvh_button.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; padding: 5px;")
         metricsFormLayout.addRow(self.plot_dvh_button)
@@ -506,11 +513,12 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.exportButton.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 5px;")
         self.exportButton.enabled = False  # Nace apagado hasta que se calcule la dosis
 
-        # Asumiendo que parametersFormLayout es el layout donde tienes tus botones principales
-        # Ajusta el nombre del layout si lo llamaste diferente en esta sección
+        # Añadir el botón de exportación al layout
         metricsFormLayout.addRow(self.exportButton)
 
-        # Conectar el botón a la función
+        # =======================================================
+        # CONEXIONES DE SEÑALES
+        # =======================================================
         self.calc_metrics_button.connect('clicked(bool)', self.onCalculateMetrics)
         self.plot_dvh_button.connect('clicked(bool)', self.onGenerateDVH)
         self.exportButton.connect('clicked(bool)', self.onExportDICOMClicked)
@@ -1250,7 +1258,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.util.showStatusMessage("Metrics updated correctly.")
 
     def onGenerateDVH(self):
-        """Genera el DVH usando todas las estructuras visibles en la escena"""
+        """Genera el DVH usando todas las estructuras visibles en la escena (Soporta % y cc)"""
         import numpy as np
         import vtk
 
@@ -1264,6 +1272,17 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
 
         eqd2_dose_node = slicer.mrmlScene.GetNodeByID(foreground_id)
+
+        # Leemos la selección del usuario
+        is_absolute_volume = (self.dvh_y_axis_combo.currentText == "Absolute Volume (cc)")
+
+        # ==========================================================
+        # CÁLCULO FÍSICO: Tamaño del Vóxel en centímetros cúbicos (cc)
+        # ==========================================================
+        # GetSpacing devuelve (dx, dy, dz) en milímetros.
+        spacing = eqd2_dose_node.GetSpacing()
+        # Volumen = (dx * dy * dz) en mm³. Dividimos entre 1000 para pasar a cc (cm³).
+        voxel_volume_cc = (spacing[0] * spacing[1] * spacing[2]) / 1000.0
 
         # ==========================================================
         # LIMPIEZA PROFUNDA (GARBAGE COLLECTOR)
@@ -1280,7 +1299,12 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "DVH_EQD2_Chart")
         plotChartNode.SetTitle(f"Dose Volume Histogram ({eqd2_dose_node.GetName()})")
         plotChartNode.SetXAxisTitle("Dose EQD2 (Gy)")
-        plotChartNode.SetYAxisTitle("Relative Volume (%)")
+
+        # Ajustamos el título del eje Y dinámicamente
+        if is_absolute_volume:
+            plotChartNode.SetYAxisTitle("Absolute Volume (cc)")
+        else:
+            plotChartNode.SetYAxisTitle("Relative Volume (%)")
 
         # ==========================================================
         # ESCÁNER GLOBAL: Buscamos TODOS los sets de estructuras
@@ -1310,13 +1334,23 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     if segment_array is None: continue
 
                     organ_dose_values = dose_array[segment_array > 0]
-                    if len(organ_dose_values) == 0: continue
+                    total_voxels = len(organ_dose_values)
 
-                    # Cálculo de DVH
+                    if total_voxels == 0: continue
+
+                    # Cálculo del histograma
                     max_dose = np.max(organ_dose_values)
                     bins = np.arange(0, max_dose + 0.2, 0.1)
                     hist, _ = np.histogram(organ_dose_values, bins=bins)
-                    cum_vol_percent = (np.cumsum(hist[::-1])[::-1] / len(organ_dose_values)) * 100.0
+
+                    # Voxeles acumulados de derecha a izquierda (mayor dosis a menor dosis)
+                    cum_voxels = np.cumsum(hist[::-1])[::-1]
+
+                    # MAGIA MATEMÁTICA: ¿Aplicamos porcentaje o volumen real?
+                    if is_absolute_volume:
+                        cum_vol_final = cum_voxels * voxel_volume_cc
+                    else:
+                        cum_vol_final = (cum_voxels / total_voxels) * 100.0
 
                     # Crear Tabla Única
                     segment_name = segmentation.GetSegment(segment_id).GetName()
@@ -1328,7 +1362,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     vol_col = vtk.vtkDoubleArray()
                     vol_col.SetName("Volume")
 
-                    for d, v in zip(bins[:-1], cum_vol_percent):
+                    for d, v in zip(bins[:-1], cum_vol_final):
                         dose_col.InsertNextValue(d)
                         vol_col.InsertNextValue(v)
 
@@ -1351,7 +1385,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         plotViewNode = plotWidget.mrmlPlotViewNode()
         plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
 
-        slicer.util.showStatusMessage("¡DVH Successfully generated!")
+        slicer.util.showStatusMessage("DVH Successfully generated!")
 
     def resetResultsDisplay(self):
         """Limpia de forma segura los datos anteriores de las métricas y el DVH."""
