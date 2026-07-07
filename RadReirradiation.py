@@ -290,7 +290,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.onRTStructSelected)
 
         # ==========================================================
-        # PANEL 2.1: CONFIGURACIÓN BIOLÓGICA Y ASIGANCION DE ROLES
+        # PANEL 2.1: CONFIGURACIÓN BIOLÓGICA Y ASIGNACIÓN DE ROLES
         # ==========================================================
         bioCollapsibleButton = ctk.ctkCollapsibleButton()
         bioCollapsibleButton.text = "2.1: Biological Configuration "
@@ -298,11 +298,25 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         bioFormLayout = qt.QFormLayout(bioCollapsibleButton)
 
         # --- BOTÓN DE EMBUDO ---
-        self.load_bio_button = qt.QPushButton("Biological Role of Visible Structures")
-        self.load_bio_button.setStyleSheet(
-            "background-color: #2980b9; color: white; font-weight: bold; margin-top: 5px;")
+        # Le agregamos una acción clara al texto y un icono visual
+        self.load_bio_button = qt.QPushButton("⚙️ Generate / Update Biological Roles Table")
+        self.load_bio_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9; 
+                color: white; 
+                font-weight: bold; 
+                font-size: 13px;
+                padding: 12px;
+                margin-top: 10px;
+                margin-bottom: 5px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #1a5276;
+            }
+        """)
         self.load_bio_button.setToolTip(
-            "Carga solo las estructuras que dejaste con el 'ojito' encendido en el Panel 2.")
+            "Carga solo las estructuras que dejaste con el 'ojito' encendido en los paneles superiores.")
         bioFormLayout.addRow(self.load_bio_button)
 
         # --- TABLA PURA DE ROLES (Qt) ---
