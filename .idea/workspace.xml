@@ -4,14 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
+    <list default="true" id="f7324251-e082-4f99-9f09-4198a56697cb" name="Changes" comment="mejoraado el boton de generar roles">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/RadReirradiation.py" beforeDir="false" afterPath="$PROJECT_DIR$/RadReirradiation.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="8" />
+    <option name="cachedIndexableFilesCount" value="12" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
@@ -21,6 +24,18 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;LuisParedesOcampo&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/LuisParedesOcampo/SlicerRadReirradiation",
+    "accountId": "193053d6-13a2-46b4-81e0-4fdfbf9b8ffd"
+  }
+}]]></component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
@@ -37,24 +52,31 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "D:/Documents/GitHub/SlicerRadReirradiation",
-    "run.code.analysis.last.selected.profile": "aDefault",
-    "to.speed.mode.migration.done": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;dev&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/Documents/GitHub/SlicerRadReirradiation&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;aDefault&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-3944b0c99280-6d6dccd035ac-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.30387.127" />
+        <option value="bundled-python-sdk-245168a56dbd-c2ffad84badb-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.25134.203" />
       </set>
     </attachedChunks>
   </component>
@@ -65,6 +87,13 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1776973209408</updated>
+      <workItem from="1781783613252" duration="4887000" />
+      <workItem from="1781870316148" duration="2479000" />
+      <workItem from="1782388990891" duration="5261000" />
+      <workItem from="1782402548056" duration="1750000" />
+      <workItem from="1782404318173" duration="2770000" />
+      <workItem from="1782475256192" duration="1268000" />
+      <workItem from="1783429993290" duration="2808000" />
     </task>
     <task id="LOCAL-00001" summary="Rename extension to RadReirradiaton">
       <option name="closed" value="true" />
@@ -130,8 +159,82 @@
       <option name="project" value="LOCAL" />
       <updated>1780249460602</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="feat: Implement voxel-based 3D Alpha/Beta biological masking&#10;&#10;- Added dynamic UI table for structure role assignment (OAR vs Tumor).&#10;- Implemented Boolean spatial masking with NumPy to resolve structure overlaps.&#10;- Upgraded EQD2 math engine to process 3D alpha/beta matrices via broadcasting.&#10;- Enforced strict clinical safety rules (OAR overrides Tumor in intersections by default).&#10;- Added UI state management for safe data extraction prior to calculation.">
+      <option name="closed" value="true" />
+      <created>1780517866605</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1780517866605</updated>
+    </task>
+    <task id="LOCAL-00010" summary="feat: Implement voxel-based 3D Alpha/Beta biological masking&#10;&#10;- Added dynamic UI table for structure role assignment (OAR vs Tumor).&#10;- Implemented Boolean spatial masking with NumPy to resolve structure overlaps.&#10;- Upgraded EQD2 math engine to process 3D alpha/beta matrices via broadcasting.&#10;- Enforced strict clinical safety rules (OAR overrides Tumor in intersections by default).&#10;- Added UI state management for safe data extraction prior to calculation.">
+      <option name="closed" value="true" />
+      <created>1780517877336</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1780517877336</updated>
+    </task>
+    <task id="LOCAL-00011" summary="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales">
+      <option name="closed" value="true" />
+      <created>1781730277557</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1781730277557</updated>
+    </task>
+    <task id="LOCAL-00012" summary="implementados mejoras a la visualizacion de estructuras y validaciones logicas">
+      <option name="closed" value="true" />
+      <created>1781733908505</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1781733908505</updated>
+    </task>
+    <task id="LOCAL-00013" summary="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz">
+      <option name="closed" value="true" />
+      <created>1781788522069</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1781788522069</updated>
+    </task>
+    <task id="LOCAL-00014" summary="mejoraado el boton de generar roles">
+      <option name="closed" value="true" />
+      <created>1783431963044</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1783431963044</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="origin/dev" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Rename extension to RadReirradiaton" />
@@ -140,6 +243,11 @@
     <MESSAGE value="Cambio de nombre e inicio desarrollo fusion manaual avanzada" />
     <MESSAGE value="Feat: Add manual alignment rotation with progressive disclosure and BRAINSFit bypass.&#10;&#10;Added manual pitch, roll, and yaw rotation sliders. Added logic to disable rotation controls during auto-registration to prevent BRAINSFit failures. Added support for 'Manual Only' registration mode." />
     <MESSAGE value="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
-    <option name="LAST_COMMIT_MESSAGE" value="&quot;Feat: Added automatic UI reset for metric tables and DVH charts before new calculations&quot;)" />
+    <MESSAGE value="feat: Implement voxel-based 3D Alpha/Beta biological masking&#10;&#10;- Added dynamic UI table for structure role assignment (OAR vs Tumor).&#10;- Implemented Boolean spatial masking with NumPy to resolve structure overlaps.&#10;- Upgraded EQD2 math engine to process 3D alpha/beta matrices via broadcasting.&#10;- Enforced strict clinical safety rules (OAR overrides Tumor in intersections by default).&#10;- Added UI state management for safe data extraction prior to calculation." />
+    <MESSAGE value="implementada visualizacion de estructuras de la tac previa, actualizacion de tablas biologica, metrica y dvh para mostrar estadisticas de estructuras previas y acutales" />
+    <MESSAGE value="implementados mejoras a la visualizacion de estructuras y validaciones logicas" />
+    <MESSAGE value="actualizadas interfaces para mejor claridad en la entrada de datos y limpieza de interfaz" />
+    <MESSAGE value="mejoraado el boton de generar roles" />
+    <option name="LAST_COMMIT_MESSAGE" value="mejoraado el boton de generar roles" />
   </component>
 </project>
