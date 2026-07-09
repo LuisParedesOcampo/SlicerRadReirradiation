@@ -1258,7 +1258,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.util.showStatusMessage("Metrics updated correctly.")
 
     def onGenerateDVH(self):
-        """Genera el DVH usando todas las estructuras visibles en la escena (Soporta % y cc)"""
+        """Genera el DVH con Zoom Clínico Volumétrico y Tooltips Recuperados"""
         import numpy as np
         import vtk
 
@@ -1272,62 +1272,39 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
 
         eqd2_dose_node = slicer.mrmlScene.GetNodeByID(foreground_id)
-
-        # Leemos la selección del usuario
         is_absolute_volume = (self.dvh_y_axis_combo.currentText == "Absolute Volume (cc)")
 
-        # ==========================================================
-        # CÁLCULO FÍSICO: Tamaño del Vóxel en centímetros cúbicos (cc)
-        # ==========================================================
-        # GetSpacing devuelve (dx, dy, dz) en milímetros.
+        # CÁLCULO FÍSICO
         spacing = eqd2_dose_node.GetSpacing()
-        # Volumen = (dx * dy * dz) en mm³. Dividimos entre 1000 para pasar a cc (cm³).
         voxel_volume_cc = (spacing[0] * spacing[1] * spacing[2]) / 1000.0
 
-        # ==========================================================
-        # LIMPIEZA PROFUNDA (GARBAGE COLLECTOR)
-        # ==========================================================
+        # LIMPIEZA PROFUNDA
         nodes_to_delete = slicer.util.getNodesByClass("vtkMRMLPlotChartNode") + \
                           slicer.util.getNodesByClass("vtkMRMLTableNode") + \
                           slicer.util.getNodesByClass("vtkMRMLPlotSeriesNode")
-
         for node in nodes_to_delete:
             if "DVH" in node.GetName():
                 slicer.mrmlScene.RemoveNode(node)
-        # ==========================================================
-
-        plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "DVH_EQD2_Chart")
-        plotChartNode.SetTitle(f"Dose Volume Histogram ({eqd2_dose_node.GetName()})")
-        plotChartNode.SetXAxisTitle("Dose EQD2 (Gy)")
-
-        # Ajustamos el título del eje Y dinámicamente
-        if is_absolute_volume:
-            plotChartNode.SetYAxisTitle("Absolute Volume (cc)")
-        else:
-            plotChartNode.SetYAxisTitle("Relative Volume (%)")
 
         # ==========================================================
-        # ESCÁNER GLOBAL: Buscamos TODOS los sets de estructuras
+        # 1. RECOLECCIÓN DE DATOS: Escanear todas las estructuras
         # ==========================================================
+        dose_array = slicer.util.arrayFromVolume(eqd2_dose_node)
         segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
         if not segmentation_nodes:
             return
 
-        dose_array = slicer.util.arrayFromVolume(eqd2_dose_node)
+        arrays_visibles = []
+        curvas_a_dibujar = []
 
-        # Recorremos cada set de estructuras encontrado
         for segmentation_node in segmentation_nodes:
             segmentation = segmentation_node.GetSegmentation()
             display_node = segmentation_node.GetDisplayNode()
+            if not display_node: continue
 
-            if not display_node:
-                continue
-
-            # Recorremos los órganos internos de este set
             for i in range(segmentation.GetNumberOfSegments()):
                 segment_id = segmentation.GetNthSegmentID(i)
 
-                # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
                 if display_node.GetSegmentVisibility(segment_id):
                     segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
                                                                                eqd2_dose_node)
@@ -1335,57 +1312,113 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                     organ_dose_values = dose_array[segment_array > 0]
                     total_voxels = len(organ_dose_values)
-
                     if total_voxels == 0: continue
 
-                    # Cálculo del histograma
+                    # Guardamos los voxeles en la "bolsa gigante" para el zoom inteligente
+                    arrays_visibles.append(organ_dose_values)
+
+                    # Procesamos la curva hasta su propio 99.9% para evitar la singularidad infinita
                     max_dose = np.max(organ_dose_values)
+                    p99_9 = np.percentile(organ_dose_values, 99.9)
+                    limite_visual_organo = p99_9 * 1.05
+                    if limite_visual_organo > max_dose: limite_visual_organo = max_dose
+
                     bins = np.arange(0, max_dose + 0.2, 0.1)
                     hist, _ = np.histogram(organ_dose_values, bins=bins)
-
-                    # Voxeles acumulados de derecha a izquierda (mayor dosis a menor dosis)
                     cum_voxels = np.cumsum(hist[::-1])[::-1]
 
-                    # MAGIA MATEMÁTICA: ¿Aplicamos porcentaje o volumen real?
                     if is_absolute_volume:
                         cum_vol_final = cum_voxels * voxel_volume_cc
                     else:
                         cum_vol_final = (cum_voxels / total_voxels) * 100.0
 
-                    # Crear Tabla Única
                     segment_name = segmentation.GetSegment(segment_id).GetName()
                     color = segmentation.GetSegment(segment_id).GetColor()
 
-                    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", f"DVH_Data_{segment_name}")
-                    dose_col = vtk.vtkDoubleArray()
-                    dose_col.SetName("Dose")
-                    vol_col = vtk.vtkDoubleArray()
-                    vol_col.SetName("Volume")
+                    curvas_a_dibujar.append({
+                        'name': segment_name,
+                        'color': color,
+                        'bins': bins,
+                        'vols': cum_vol_final,
+                        'limit': limite_visual_organo,
+                        'max': max_dose
+                    })
 
-                    for d, v in zip(bins[:-1], cum_vol_final):
-                        dose_col.InsertNextValue(d)
-                        vol_col.InsertNextValue(v)
+        if not arrays_visibles:
+            return
 
-                    tableNode.AddColumn(dose_col)
-                    tableNode.AddColumn(vol_col)
+        # ==========================================================
+        # 2. LA MAGIA: CÁLCULO DEL ZOOM CLÍNICO BASADO EN MASA VOLUMÉTRICA
+        # ==========================================================
+        # Unimos todos los voxeles de todos los órganos encendidos
+        pool_global = np.concatenate(arrays_visibles)
 
-                    seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", segment_name)
-                    seriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-                    seriesNode.SetXColumnName("Dose")
-                    seriesNode.SetYColumnName("Volume")
-                    seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-                    seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleNone)
-                    seriesNode.SetColor(color[0], color[1], color[2])
+        # Al tomar el percentil 95 de la masa total, ignoramos la pequeña zona de la semilla de braquiterapia
+        # y nos anclamos exactamente en la dosis clínica relevante (OARs y PTV).
+        dosis_zoom_clinico = np.percentile(pool_global, 95)
+        dosis_zoom_clinico = dosis_zoom_clinico * 1.25  # Añadimos un 25% de espacio en blanco a la derecha para que respire
 
-                    plotChartNode.AddAndObservePlotSeriesNodeID(seriesNode.GetID())
+        # ==========================================================
+        # 3. DIBUJAR LA GRÁFICA EN SLICER
+        # ==========================================================
+        plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "DVH_EQD2_Chart")
+        plotChartNode.SetTitle(f"Dose Volume Histogram ({eqd2_dose_node.GetName()})")
+        plotChartNode.SetXAxisTitle("Dose EQD2 (Gy)")
 
-        # Configurar Layout y mostrar
+        if is_absolute_volume:
+            plotChartNode.SetYAxisTitle("Absolute Volume (cc)")
+        else:
+            plotChartNode.SetYAxisTitle("Relative Volume (%)")
+
+        for curva in curvas_a_dibujar:
+            tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", f"DVH_Data_{curva['name']}")
+            dose_col = vtk.vtkDoubleArray()
+            dose_col.SetName("Dose")
+            vol_col = vtk.vtkDoubleArray()
+            vol_col.SetName("Volume")
+
+            # Llenamos la tabla hasta el límite del órgano
+            for d, v in zip(curva['bins'][:-1], curva['vols']):
+                if d <= curva['limit']:
+                    dose_col.InsertNextValue(d)
+                    vol_col.InsertNextValue(v)
+
+            # Forzar caída a cero para que la curva se vea completa
+            if curva['limit'] < curva['max']:
+                dose_col.InsertNextValue(curva['limit'] + 0.1)
+                vol_col.InsertNextValue(0.0)
+
+            tableNode.AddColumn(dose_col)
+            tableNode.AddColumn(vol_col)
+
+            seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", curva['name'])
+            seriesNode.SetAndObserveTableNodeID(tableNode.GetID())
+            seriesNode.SetXColumnName("Dose")
+            seriesNode.SetYColumnName("Volume")
+
+            # Usamos Scatter para GARANTIZAR que los tooltips funcionen con el ratón
+            seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+            seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleNone)
+            seriesNode.SetColor(curva['color'][0], curva['color'][1], curva['color'][2])
+
+            plotChartNode.AddAndObservePlotSeriesNodeID(seriesNode.GetID())
+
+        # ==========================================================
+        # 4. APLICAR EL ZOOM CLÍNICO
+        # ==========================================================
+        plotChartNode.SetXAxisRangeAuto(False)
+        plotChartNode.SetXAxisRange(0, dosis_zoom_clinico)
+
+        if not is_absolute_volume:
+            plotChartNode.SetYAxisRangeAuto(False)
+            plotChartNode.SetYAxisRange(0, 105)
+
         layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotView)
         plotWidget = layoutManager.plotWidget(0)
         plotViewNode = plotWidget.mrmlPlotViewNode()
         plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
 
-        slicer.util.showStatusMessage("DVH Successfully generated!")
+        slicer.util.showStatusMessage("DVH Successfully generated with Intelligent Volumetric Zoom!")
 
     def resetResultsDisplay(self):
         """Limpia de forma segura los datos anteriores de las métricas y el DVH."""
@@ -1672,10 +1705,24 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
         slicer.util.updateVolumeFromArray(eqd2_node, eqd2_total)
 
-        # --- PASO E: AUTOMATIZACIÓN VISUAL ---
-        # 1. Encontrar la dosis máxima para escalar los colores automáticamente
-        dosis_maxima = np.max(eqd2_total)
+        # ==========================================================
+        # --- PASO E: AUTOMATIZACIÓN VISUAL (RECORTE CLÍNICO) ---
+        # ==========================================================
 
+        # 1. Encontrar la "Dosis Clínica Máxima" (Ignorando la singularidad de braquiterapia)
+        voxeles_con_dosis = eqd2_total[eqd2_total > 1.0]
+        dosis_absoluta_max = np.max(eqd2_total)
+
+        if len(voxeles_con_dosis) > 0:
+            p99_5 = np.percentile(voxeles_con_dosis, 99.5)
+            # Añadimos un 10% de margen visual por encima del percentil
+            dosis_maxima_visual = p99_5 * 1.1
+            # Límite de seguridad
+            dosis_maxima_visual = min(dosis_maxima_visual, dosis_absoluta_max)
+        else:
+            dosis_maxima_visual = dosis_absoluta_max
+
+        umbral_minimo = 2.0
 
         # 2. Configurar el "Display Node" (el pintor de Slicer)
         display_node = eqd2_node.GetDisplayNode()
@@ -1683,60 +1730,49 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             eqd2_node.CreateDefaultDisplayNodes()
             display_node = eqd2_node.GetDisplayNode()
 
-        # 3. Aplicar paleta de colores de dosis (Arcoíris)
-        # display_node.SetAndObserveColorNodeID('vtkMRMLColorTableNodeRainbow')
-        # ==========================================================
-        # 3. CREAR Y ASIGNAR MAPA DE COLORES ESTILO "ECLIPSE TPS"
-        # ==========================================================
+        # 3. CREAR MAPA DE COLORES (Standard 0 a 1)
         color_name = "Eclipse_Dose_Wash"
         color_node = slicer.mrmlScene.GetFirstNodeByName(color_name)
 
-        # Si el mapa no existe en la escena, lo creamos desde cero
         if not color_node:
             color_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLColorTableNode", color_name)
             color_node.SetTypeToUser()
             color_node.SetNumberOfColors(256)
 
-            # Usamos una función de transferencia para crear el degradado suave
             ctf = vtk.vtkColorTransferFunction()
-            ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)  # 0%   - Azul Oscuro (Bajas dosis)
+            ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)  # 0%   - Azul Oscuro
             ctf.AddRGBPoint(0.25, 0.0, 0.8, 1.0)  # 25%  - Cyan
             ctf.AddRGBPoint(0.50, 0.0, 1.0, 0.0)  # 50%  - Verde
             ctf.AddRGBPoint(0.75, 1.0, 1.0, 0.0)  # 75%  - Amarillo
             ctf.AddRGBPoint(0.90, 1.0, 0.5, 0.0)  # 90%  - Naranja
-            ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)  # 100% - Rojo (Altas dosis)
+            ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)  # 100% - Rojo
 
-            # Llenamos la paleta de Slicer con los 256 colores interpolados
             for i in range(256):
                 r, g, b = ctf.GetColor(i / 255.0)
-                color_node.SetColor(i, str(i), r, g, b, 1.0)  # El 1.0 es la opacidad base
+                color_node.SetColor(i, str(i), r, g, b, 1.0)
 
-        # Le aplicamos nuestro nuevo mapa de colores al volumen de dosis
         display_node.SetAndObserveColorNodeID(color_node.GetID())
-        # ==========================================================
 
-        # 4. Ajustar umbral: Hacer transparente todo lo que esté por debajo de 2 Gy
-        umbral_minimo = 2.0
+        # 4. Ajustar umbral: La leyenda y el gradiente van solo hasta el Límite Clínico
         display_node.SetAutoWindowLevel(False)
-        display_node.SetWindowLevelMinMax(umbral_minimo, dosis_maxima)
+        display_node.SetWindowLevelMinMax(umbral_minimo, dosis_maxima_visual)
+
+        # Mantenemos el límite superior físico real para que el núcleo de braqui se pinte de rojo
         display_node.SetApplyThreshold(1)
         display_node.SetLowerThreshold(umbral_minimo)
-        display_node.SetUpperThreshold(dosis_maxima)
+        display_node.SetUpperThreshold(dosis_absoluta_max)
 
-        # 5. Inyectar automáticamente el mapa de calor sobre las vistas 2D
+        # 5. Inyectar mapa de calor
         slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
 
-        # 6. CREAR Y MOSTRAR LA LEYENDA (SCALAR BAR)
+        # 6. LEYENDA (SCALAR BAR)
         try:
-            # Invoca el motor de leyendas de Slicer y lo ancla a nuestro volumen
             color_legend = slicer.modules.colors.logic().AddDefaultColorLegendDisplayNode(eqd2_node)
             color_legend.SetTitleText("Dose EQD2 (Gy)")
         except Exception as e:
-            # En caso de que se use una versión antigua de Slicer que no soporte este método
-            print(f"Notice: The legend could not be generated automatically. {e}")
+            pass
 
         return eqd2_node
-
 
 # ==========================================================
 # 4. PRUEBAS AUTOMATIZADAS
