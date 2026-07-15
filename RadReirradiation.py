@@ -487,12 +487,31 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "background-color: #9b59b6; color: white; font-weight: bold; padding: 5px;")
         metricsFormLayout.addRow(self.calc_metrics_button)
 
-        # Tabla de resultados nativa
+        # ==========================================================
+        # SELECTOR DE VOLUMEN PARA DMAX (Dxcc)
+        # ==========================================================
+        self.dmax_volume_spinbox = qt.QDoubleSpinBox()
+        self.dmax_volume_spinbox.setRange(0.0, 10.0)  # Permite evaluar desde absoluto (0.0) hasta 10 cc
+        self.dmax_volume_spinbox.setSingleStep(0.01)
+        self.dmax_volume_spinbox.setDecimals(2)
+        self.dmax_volume_spinbox.setValue(0.03)  # Por defecto: 0.03 cc (Recomendación ICRU)
+        self.dmax_volume_spinbox.setToolTip(
+            "Volume constraint for Maximum Dose (e.g., 0.03cc for PRV, 2.0cc for hollow organs). Set to 0.0 for Absolute Max.")
+
+        # Agregamos el selector al layout justo antes de la tabla
+        metricsFormLayout.addRow("DMax Volume Constraint (cc): ", self.dmax_volume_spinbox)
+
+        # ==========================================================
+        # TABLA DE RESULTADOS NATIVA
+        # ==========================================================
         self.metrics_table = qt.QTableWidget()
         self.metrics_table.setColumnCount(3)
-        self.metrics_table.setHorizontalHeaderLabels(["Estructure", "Max Dose (Gy)", "Mean Dose (Gy)"])
+        # Título inicial por defecto. (Luego onCalculateMetrics lo cambiará dinámicamente)
+        self.metrics_table.setHorizontalHeaderLabels(["Structure Name", "DMax 0.03cc (Gy)", "Mean Dose (Gy)"])
         self.metrics_table.horizontalHeader().setSectionResizeMode(
             qt.QHeaderView.Stretch)  # Ajusta las columnas al ancho
+
+        # Agregamos la tabla debajo del selector
         metricsFormLayout.addRow(self.metrics_table)
 
         # --- SELECTOR DE UNIDADES PARA EL DVH ---
@@ -1182,7 +1201,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return bio_config
 
     def onCalculateMetrics(self):
-        """Calcula métricas forzando la actualización de los datos de dosis visibles en toda la escena"""
+        """Calcula métricas forzando la actualización de los datos de dosis visibles (Soporta Dxcc)"""
         import numpy as np
 
         # Identificar el volumen activo en el visor rojo
@@ -1201,6 +1220,22 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.util.showStatusMessage(f"Calculating about: {eqd2_dose_node.GetName()}...")
         slicer.app.processEvents()
+
+        # ==========================================================
+        # LECTURA DEL UI Y CONFIGURACIÓN DE LA TABLA
+        # ==========================================================
+        # Leemos el volumen (en cc) que el usuario quiere para el DMax
+        dmax_cc = self.dmax_volume_spinbox.value
+
+        # Cambiamos dinámicamente el título de la columna en la tabla
+        if dmax_cc == 0.0:
+            self.metrics_table.setHorizontalHeaderLabels(["Structure Name", "Absolute DMax", "DMean (Gy)"])
+        else:
+            self.metrics_table.setHorizontalHeaderLabels(["Structure Name", f"DMax {dmax_cc}cc", "DMean (Gy)"])
+
+        # CÁLCULO FÍSICO: Tamaño del Vóxel en centímetros cúbicos (cc)
+        spacing = eqd2_dose_node.GetSpacing()
+        voxel_volume_cc = (spacing[0] * spacing[1] * spacing[2]) / 1000.0
 
         # ==========================================================
         # ESCÁNER GLOBAL: Buscamos TODOS los sets de estructuras
@@ -1232,20 +1267,43 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 if display_node.GetSegmentVisibility(segment_id):
                     segment_name = segmentation.GetSegment(segment_id).GetName()
 
-                    # Resamplear el segmento a la resolución del NUEVO volumen de dosis
                     segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
                                                                                eqd2_dose_node)
 
                     if segment_array is not None:
                         organ_dose_values = dose_array[segment_array > 0]
                         if len(organ_dose_values) > 0:
-                            max_dose = np.max(organ_dose_values)
+
+                            # ==========================================================
+                            # LA MAGIA: CÁLCULO DEL D_xcc (Dosis que cubre X volumen)
+                            # ==========================================================
+                            if dmax_cc == 0.0:
+                                # Dosis Máxima Absoluta (el clásico ruido de 1 solo vóxel)
+                                calculated_dmax = np.max(organ_dose_values)
+                            else:
+                                # 1. Ordenar todas las dosis de ESTE órgano de mayor a menor
+                                sorted_doses = np.sort(organ_dose_values)[::-1]
+
+                                # 2. ¿Cuántos vóxeles físicos se necesitan para formar esos "cc"?
+                                required_voxels = int(np.round(dmax_cc / voxel_volume_cc))
+
+                                # 3. Encontramos el índice en el arreglo.
+                                # Restamos 1 porque los índices en Python empiezan en 0.
+                                idx = max(0, required_voxels - 1)
+
+                                # 4. Seguro contra fallos: Si el órgano entero (ej. quiasma) es más pequeño
+                                # que el volumen pedido (ej. 2cc), simplemente reportamos la dosis mínima del órgano entero.
+                                if idx >= len(sorted_doses):
+                                    idx = len(sorted_doses) - 1
+
+                                calculated_dmax = sorted_doses[idx]
+
                             mean_dose = np.mean(organ_dose_values)
 
                             self.metrics_table.insertRow(row)
                             self.metrics_table.setItem(row, 0, qt.QTableWidgetItem(segment_name))
 
-                            item_max = qt.QTableWidgetItem(f"{max_dose:.2f}")
+                            item_max = qt.QTableWidgetItem(f"{calculated_dmax:.2f}")
                             item_max.setTextAlignment(qt.Qt.AlignCenter)
                             self.metrics_table.setItem(row, 1, item_max)
 
@@ -1255,7 +1313,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                             row += 1
 
-        slicer.util.showStatusMessage("Metrics updated correctly.")
+        slicer.util.showStatusMessage(f"Metrics generated successfully with DMax at {dmax_cc}cc!")
 
     def onGenerateDVH(self):
         """Genera el DVH con Zoom Clínico Volumétrico y Tooltips Recuperados"""
@@ -1275,10 +1333,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         is_absolute_volume = (self.dvh_y_axis_combo.currentText == "Absolute Volume (cc)")
 
         # CÁLCULO FÍSICO
+        # GetSpacing devuelve (dx, dy, dz) en milímetros.
+
         spacing = eqd2_dose_node.GetSpacing()
+        # Volumen = (dx * dy * dz) en mm³. Dividimos entre 1000 para pasar a cc (cm³).
         voxel_volume_cc = (spacing[0] * spacing[1] * spacing[2]) / 1000.0
 
-        # LIMPIEZA PROFUNDA
+        # LIMPIEZA PROFUNDA (GARBAGE COLLECTOR)
         nodes_to_delete = slicer.util.getNodesByClass("vtkMRMLPlotChartNode") + \
                           slicer.util.getNodesByClass("vtkMRMLTableNode") + \
                           slicer.util.getNodesByClass("vtkMRMLPlotSeriesNode")
@@ -1296,7 +1357,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         arrays_visibles = []
         curvas_a_dibujar = []
-
+        # Recorremos cada set de estructuras encontrado
         for segmentation_node in segmentation_nodes:
             segmentation = segmentation_node.GetSegmentation()
             display_node = segmentation_node.GetDisplayNode()
