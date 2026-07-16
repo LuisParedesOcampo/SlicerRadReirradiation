@@ -511,6 +511,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.metrics_table.horizontalHeader().setSectionResizeMode(
             qt.QHeaderView.Stretch)  # Ajusta las columnas al ancho
 
+        # --- NUEVAS LÍNEAS PARA MEJORAR EL TAMAÑO (UI FIX) ---
+        # Establecemos una altura mínima (250 píxeles te mostrará unas 7-8 filas cómodamente)
+        self.metrics_table.setMinimumHeight(250)
+
+        # Le decimos a PyQt que la tabla se expanda verticalmente si hay espacio libre
+        self.metrics_table.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.MinimumExpanding)
+        # -----------------------------------------------------
+
         # Agregamos la tabla debajo del selector
         metricsFormLayout.addRow(self.metrics_table)
 
