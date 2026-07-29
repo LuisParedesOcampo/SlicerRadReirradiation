@@ -1524,44 +1524,259 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("Interfaz limpia: Lienzo en blanco para el nuevo cálculo.")
 
     def onExportDICOMClicked(self):
-        fixed_ct = self.fixed_ct_selector.currentNode()
-        fixed_dose = self.fixed_dose_selector.currentNode()
+        """Exporta la dosis EQD2 a un RTDOSE + un RTPLAN 'sombra' compatibles con Eclipse"""
+        import os
+        import numpy as np
+        import qt
+        import datetime
+
+        try:
+            import pydicom
+            from pydicom.uid import generate_uid
+        except ImportError:
+            slicer.util.pip_install("pydicom")
+            import pydicom
+            from pydicom.uid import generate_uid
 
         if not hasattr(self, 'eqd2_node') or not self.eqd2_node:
             slicer.util.warningDisplay("Please calculate the EQD2 dose first.")
             return
 
         try:
+            output_dir = qt.QFileDialog.getExistingDirectory(None, "Select Folder to Save the New EQD2 DICOM")
+            if not output_dir:
+                return
+
+            slicer.util.showStatusMessage("Searching for DICOM template...")
+            slicer.app.processEvents()
+
+            # ==========================================================
+            # 3. PLAN A: Búsqueda Automática del RTDOSE original
+            # ==========================================================
+            original_file_path = None
             shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            eqd2_item_id = shNode.GetItemByDataNode(self.eqd2_node)
-            fixed_ct_item_id = shNode.GetItemByDataNode(fixed_ct)
 
-            # 1. Copiar el "ADN" de la dosis original
-            attrNames = fixed_dose.GetAttributeNames()
-            if attrNames:
-                for attrName in attrNames:
-                    if attrName.startswith("DICOM."):
-                        self.eqd2_node.SetAttribute(attrName, fixed_dose.GetAttribute(attrName))
+            nodes_to_check = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"))
+            for node in nodes_to_check:
+                if not node: continue
+                uid = node.GetAttribute("DICOM.instanceUIDs")
+                if not uid:
+                    item_id = shNode.GetItemByDataNode(node)
+                    if item_id:
+                        uid = shNode.GetItemAttribute(item_id, "DICOM.instanceUIDs")
+                if uid:
+                    uid = uid.split()[0]
+                    path = slicer.dicomDatabase.fileForInstance(uid)
+                    if path and os.path.exists(path):
+                        temp_ds = pydicom.dcmread(path, stop_before_pixels=True)
+                        if temp_ds.Modality == "RTDOSE":
+                            original_file_path = path
+                            break
 
-            self.eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
-            self.eqd2_node.SetAttribute("DICOM.SeriesDescription", "RadReirradiation_EQD2_Sum")
-            self.eqd2_node.RemoveAttribute("DICOM.instanceUIDs")
+            # ==========================================================
+            # 4. PLAN B: Selección Manual del RTDOSE
+            # ==========================================================
+            if not original_file_path:
+                msg = ("Slicer lost the DICOM metadata of the original dose.\n\n"
+                       "Please manually select the ORIGINAL RTDOSE (.dcm) file of this patient to use as a template.")
+                slicer.util.warningDisplay(msg)
+                original_file_path = qt.QFileDialog.getOpenFileName(None, "Select the ORIGINAL RTDOSE (.dcm) file", "",
+                                                                    "DICOM Files (*.dcm);;All Files (*)")
+                if not original_file_path or not os.path.exists(original_file_path):
+                    slicer.util.errorDisplay("Export cancelled. A valid DICOM template is required for the TPS.")
+                    return
+                temp_ds = pydicom.dcmread(original_file_path, stop_before_pixels=True)
+                if temp_ds.Modality != "RTDOSE":
+                    slicer.util.errorDisplay(
+                        f"The selected file is a {temp_ds.Modality}, not an RTDOSE. Export cancelled.")
+                    return
 
-            # 2. Mover la Dosis para que sea "hermana" exacta del CT en la carpeta del paciente
-            parent_item_id = shNode.GetItemParent(fixed_ct_item_id)
-            shNode.SetItemParent(eqd2_item_id, parent_item_id)
-            shNode.SetItemAttribute(eqd2_item_id, "DICOM.Modality", "RTDOSE")
+            slicer.util.showStatusMessage("Cloning DICOM template and injecting EQD2...")
+            slicer.app.processEvents()
 
-            # 3. Abrir ventana de exportación
-            slicer.modules.dicom.widgetRepresentation()
-            exportDialog = slicer.qSlicerDICOMExportDialog(None)
-            exportDialog.setMRMLScene(slicer.mrmlScene)
-            exportDialog.execDialog()
+            # ==========================================================
+            # 5. CARGAR PLANTILLA E INYECTAR LA NUEVA FÍSICA EQD2
+            # ==========================================================
+            ds = pydicom.dcmread(original_file_path)
+            eqd2_array = slicer.util.arrayFromVolume(self.eqd2_node)
+
+            frames, rows, cols = eqd2_array.shape
+            ds.NumberOfFrames = frames
+            ds.Rows = rows
+            ds.Columns = cols
+
+            if hasattr(ds, 'GridFrameOffsetVector') and len(ds.GridFrameOffsetVector) >= 2:
+                z_step = float(ds.GridFrameOffsetVector[1]) - float(ds.GridFrameOffsetVector[0])
+            else:
+                z_step = self.eqd2_node.GetSpacing()[2]
+            ds.GridFrameOffsetVector = [round(i * z_step, 6) for i in range(frames)]
+
+            max_physical_dose = np.max(eqd2_array)
+            bits_allocated = getattr(ds, 'BitsAllocated', 16)
+            if bits_allocated == 16:
+                max_int = 65534.0
+                target_dtype = np.uint16
+            else:
+                max_int = 4294967294.0
+                target_dtype = np.uint32
+
+            if max_physical_dose > 0:
+                dose_grid_scaling = max_physical_dose / max_int
+                scaled_array = np.round(eqd2_array / dose_grid_scaling).astype(target_dtype)
+            else:
+                dose_grid_scaling = 1.0
+                scaled_array = np.zeros_like(eqd2_array, dtype=target_dtype)
+
+            ds.DoseGridScaling = dose_grid_scaling
+            ds.PixelData = scaled_array.tobytes()
+
+            # ==========================================================
+            # 6. LOCALIZAR EL RTPLAN ORIGINAL (para clonarlo)
+            # ==========================================================
+            if 'ReferencedRTPlanSequence' not in ds or len(ds.ReferencedRTPlanSequence) == 0:
+                slicer.util.errorDisplay("The template RTDOSE has no Referenced RT Plan. Cannot build a shadow plan.")
+                return
+
+            plan_ref_item = ds.ReferencedRTPlanSequence[0]
+            original_plan_uid = plan_ref_item.ReferencedSOPInstanceUID
+
+            original_plan_path = slicer.dicomDatabase.fileForInstance(original_plan_uid)
+            if not original_plan_path or not os.path.exists(original_plan_path):
+                slicer.util.warningDisplay(
+                    "Could not automatically locate the original RTPLAN.\n\n"
+                    "Please manually select the ORIGINAL RTPLAN (.dcm) file of this patient."
+                )
+                original_plan_path = qt.QFileDialog.getOpenFileName(
+                    None, "Select the ORIGINAL RTPLAN (.dcm) file", "", "DICOM Files (*.dcm);;All Files (*)")
+                if not original_plan_path or not os.path.exists(original_plan_path):
+                    slicer.util.errorDisplay("Export cancelled. A valid RTPLAN is required to build the shadow plan.")
+                    return
+
+            plan_temp_ds = pydicom.dcmread(original_plan_path, stop_before_pixels=True)
+            if plan_temp_ds.Modality != "RTPLAN":
+                slicer.util.errorDisplay(
+                    f"The selected file is a {plan_temp_ds.Modality}, not an RTPLAN. Export cancelled.")
+                return
+
+            slicer.util.showStatusMessage("Building shadow RTPLAN...")
+            slicer.app.processEvents()
+
+            # ==========================================================
+            # 6b. LOCALIZAR Y COPIAR EL STRUCTURE SET ORIGINAL (sin modificar)
+            #     Eclipse exige que Imagen + Structure Set + Plan + Dosis
+            #     estén presentes en la misma importación.
+            # ==========================================================
+            import shutil
+
+            rtstruct_path = None
+            plan_full_ds = pydicom.dcmread(original_plan_path, stop_before_pixels=True)
+
+            if hasattr(plan_full_ds, 'ReferencedStructureSetSequence') and len(
+                    plan_full_ds.ReferencedStructureSetSequence) > 0:
+                rtstruct_uid = plan_full_ds.ReferencedStructureSetSequence[0].ReferencedSOPInstanceUID
+                rtstruct_path = slicer.dicomDatabase.fileForInstance(rtstruct_uid)
+
+            if not rtstruct_path or not os.path.exists(rtstruct_path):
+                slicer.util.warningDisplay(
+                    "Could not automatically locate the original RTSTRUCT.\n\n"
+                    "Please manually select the ORIGINAL Structure Set (.dcm) file of this patient.\n"
+                    "Eclipse needs it to import the dose correctly."
+                )
+                rtstruct_path = qt.QFileDialog.getOpenFileName(
+                    None, "Select the ORIGINAL RTSTRUCT (.dcm) file", "", "DICOM Files (*.dcm);;All Files (*)")
+                if not rtstruct_path or not os.path.exists(rtstruct_path):
+                    slicer.util.errorDisplay("Export cancelled. The RTSTRUCT is required by Eclipse to link the dose.")
+                    return
+                temp_struct_ds = pydicom.dcmread(rtstruct_path, stop_before_pixels=True)
+                if temp_struct_ds.Modality != "RTSTRUCT":
+                    slicer.util.errorDisplay(
+                        f"The selected file is a {temp_struct_ds.Modality}, not an RTSTRUCT. Export cancelled.")
+                    return
+
+            rtstruct_filename = f"RTSTRUCT_original_{os.path.basename(rtstruct_path)}"
+            rtstruct_dest = os.path.join(output_dir, rtstruct_filename)
+            shutil.copy2(rtstruct_path, rtstruct_dest)
+
+            # ==========================================================
+            # 7. CREAR EL "PLAN SOMBRA": copia del RTPLAN con UIDs nuevos
+            #    Esto evita "Plan has dose already calculated" porque, para
+            #    Eclipse, es un plan nuevo sin ninguna dosis asociada aún.
+            # ==========================================================
+            plan_ds = pydicom.dcmread(original_plan_path)
+
+            new_plan_series_uid = generate_uid()
+            new_plan_sop_uid = generate_uid()
+            plan_ds.SeriesInstanceUID = new_plan_series_uid
+            plan_ds.SOPInstanceUID = new_plan_sop_uid
+
+            # Limpiar referencias a dosis ya calculadas sobre el plan original
+            # (si no se limpian, el plan sombra "hereda" el vínculo con la dosis vieja)
+            if hasattr(plan_ds, 'FractionGroupSequence'):
+                for fg in plan_ds.FractionGroupSequence:
+                    if 'ReferencedDoseSequence' in fg:
+                        del fg.ReferencedDoseSequence
+            if 'ReferencedDoseSequence' in plan_ds:
+                del plan_ds.ReferencedDoseSequence
+
+            # Evitar que el plan sombra se confunda con el plan clínico aprobado
+            if hasattr(plan_ds, 'ApprovalStatus'):
+                plan_ds.ApprovalStatus = "UNAPPROVED"
+
+            if hasattr(plan_ds, 'RTPlanLabel'):
+                plan_ds.RTPlanLabel = (str(plan_ds.RTPlanLabel)[:12] + "_EQD2")[:16]
+            plan_ds.SeriesDescription = "RadReirradiation_EQD2_ShadowPlan"
+
+            dt = datetime.datetime.now()
+            plan_ds.InstanceCreationDate = dt.strftime('%Y%m%d')
+            plan_ds.InstanceCreationTime = dt.strftime('%H%M%S')
+
+            plan_filename = f"RTPLAN_EQD2shadow_{dt.strftime('%H%M%S')}.dcm"
+            plan_save_path = os.path.join(output_dir, plan_filename)
+            pydicom.dcmwrite(plan_save_path, plan_ds)
+
+            # ==========================================================
+            # 8. MUTACIÓN CLÍNICA: aislar el RTDOSE, pero enlazado al plan sombra
+            # ==========================================================
+            ds.SeriesInstanceUID = generate_uid()
+            ds.SOPInstanceUID = generate_uid()
+            ds.SeriesDescription = "RadReirradiation_EQD2_Sum"
+
+            # Repuntar (NO borrar) la referencia al plan: ahora apunta al plan sombra
+            plan_ref_item.ReferencedSOPClassUID = plan_ds.SOPClassUID
+            plan_ref_item.ReferencedSOPInstanceUID = new_plan_sop_uid
+
+            # Eclipse solo acepta PLAN, FRACTION o BEAM -> nos aseguramos de mantener PLAN
+            ds.DoseSummationType = "PLAN"
+
+            if hasattr(ds, 'SeriesNumber'):
+                ds.SeriesNumber = int(ds.SeriesNumber) + 100
+            else:
+                ds.SeriesNumber = 999
+
+            ds.InstanceCreationDate = dt.strftime('%Y%m%d')
+            ds.InstanceCreationTime = dt.strftime('%H%M%S')
+            if hasattr(ds, 'ContentDate'): ds.ContentDate = ds.InstanceCreationDate
+            if hasattr(ds, 'ContentTime'): ds.ContentTime = ds.InstanceCreationTime
+
+            # 9. GUARDAR EL NUEVO ARCHIVO DE DOSIS
+            dose_filename = f"RTDOSE_EQD2_{dt.strftime('%H%M%S')}.dcm"
+            dose_save_path = os.path.join(output_dir, dose_filename)
+            pydicom.dcmwrite(dose_save_path, ds)
+
+            # 10. NOTIFICACIÓN DE ÉXITO
+            slicer.util.showStatusMessage(f"Success! Saved at: {output_dir}")
+            qt.QMessageBox.information(
+                None, "Export Successful",
+                f"DICOM files saved in:\n\n{output_dir}\n\n"
+                f"1) {rtstruct_filename}  (original Structure Set)\n"
+                f"2) {plan_filename}  (shadow RTPLAN)\n"
+                f"3) {dose_filename}  (EQD2 RTDOSE)\n\n"
+                "Select and import ALL THREE files together into Eclipse."
+            )
 
         except Exception as e:
             slicer.util.errorDisplay(f"Export Error: {str(e)}")
-
-
+            print(f"Detailed Error: {str(e)}")
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
