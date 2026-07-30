@@ -543,12 +543,32 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Añadir el botón de exportación al layout
         metricsFormLayout.addRow(self.exportButton)
 
+        # --- Botón de Exportación de Reporte PDF ---
+        self.exportPdfButton = qt.QPushButton("Export Clinical Report (PDF)")
+        self.exportPdfButton.toolTip = "Generates a detailed PDF report with the analysis configuration and dosimetric results."
+        self.exportPdfButton.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 5px;")
+        # Nace apagado hasta que se calculen las métricas
+        self.exportPdfButton.enabled = False
+
+        metricsFormLayout.addRow(self.exportPdfButton)
+
         # =======================================================
         # CONEXIONES DE SEÑALES
         # =======================================================
         self.calc_metrics_button.connect('clicked(bool)', self.onCalculateMetrics)
         self.plot_dvh_button.connect('clicked(bool)', self.onGenerateDVH)
         self.exportButton.connect('clicked(bool)', self.onExportDICOMClicked)
+        self.exportPdfButton.connect('clicked(bool)', self.onExportPdfClicked)
+        # Conexiones Ninja para intentar auto-rellenar las fracciones en silencio
+        if hasattr(self, 'moving_dose_selector'):
+            self.moving_dose_selector.connect('currentNodeChanged(vtkMRMLNode*)',
+                                              lambda node: self.attemptSilentFractionExtraction(node,
+                                                                                                self.fractions_a_spinbox))
+
+        if hasattr(self, 'fixed_dose_selector'):
+            self.fixed_dose_selector.connect('currentNodeChanged(vtkMRMLNode*)',
+                                             lambda node: self.attemptSilentFractionExtraction(node,
+                                                                                               self.fractions_b_spinbox))
 
         # Empuja todo hacia arriba para que quede ordenado
         self.layout.addStretch(1)
@@ -1322,6 +1342,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             row += 1
 
         slicer.util.showStatusMessage(f"Metrics generated successfully with DMax at {dmax_cc}cc!")
+        self.exportPdfButton.enabled = True #habilitar exportacion de PDF
 
     def onGenerateDVH(self):
         """Genera el DVH con Zoom Clínico Volumétrico y Tooltips Recuperados"""
@@ -1524,44 +1545,642 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("Interfaz limpia: Lienzo en blanco para el nuevo cálculo.")
 
     def onExportDICOMClicked(self):
-        fixed_ct = self.fixed_ct_selector.currentNode()
-        fixed_dose = self.fixed_dose_selector.currentNode()
+        """Exporta la dosis EQD2 a un RTDOSE + un RTPLAN 'sombra' compatibles con Eclipse"""
+        import os
+        import numpy as np
+        import qt
+        import datetime
+        import slicer
+
+        try:
+            import pydicom
+            from pydicom.uid import generate_uid
+        except ImportError:
+            slicer.util.pip_install("pydicom")
+            import pydicom
+            from pydicom.uid import generate_uid
 
         if not hasattr(self, 'eqd2_node') or not self.eqd2_node:
             slicer.util.warningDisplay("Please calculate the EQD2 dose first.")
             return
 
         try:
+            output_dir = qt.QFileDialog.getExistingDirectory(None, "Select Folder to Save the New EQD2 DICOM")
+            if not output_dir:
+                return
+
+            slicer.util.showStatusMessage("Searching for DICOM template seamlessly...")
+            slicer.app.processEvents()
+
+            # ==========================================================
+            # 3. PLAN A: Búsqueda Ninja del RTDOSE original
+            # ==========================================================
+            original_file_path = None
             shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            eqd2_item_id = shNode.GetItemByDataNode(self.eqd2_node)
-            fixed_ct_item_id = shNode.GetItemByDataNode(fixed_ct)
+            db = slicer.dicomDatabase
+            template_node = self.fixed_dose_selector.currentNode()
+            dose_uid, study_uid = None, None
 
-            # 1. Copiar el "ADN" de la dosis original
-            attrNames = fixed_dose.GetAttributeNames()
-            if attrNames:
-                for attrName in attrNames:
-                    if attrName.startswith("DICOM."):
-                        self.eqd2_node.SetAttribute(attrName, fixed_dose.GetAttribute(attrName))
+            if template_node:
+                # Rastreador de atributos en jerarquía
+                def find_attributes(node):
+                    d_uid, s_uid = None, None
+                    if node.GetAttribute("DICOM.instanceUIDs"):
+                        d_uid = node.GetAttribute("DICOM.instanceUIDs").split()[0]
+                    item = shNode.GetItemByDataNode(node)
+                    while item:
+                        if not d_uid and shNode.GetItemAttribute(item, "DICOM.instanceUIDs"):
+                            d_uid = shNode.GetItemAttribute(item, "DICOM.instanceUIDs").split()[0]
+                        if not s_uid and shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID"):
+                            s_uid = shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID")
+                        if d_uid and s_uid: break
+                        item = shNode.GetItemParent(item)
+                    return d_uid, s_uid
 
-            self.eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
-            self.eqd2_node.SetAttribute("DICOM.SeriesDescription", "RadReirradiation_EQD2_Sum")
-            self.eqd2_node.RemoveAttribute("DICOM.instanceUIDs")
+                dose_uid, study_uid = find_attributes(template_node)
 
-            # 2. Mover la Dosis para que sea "hermana" exacta del CT en la carpeta del paciente
-            parent_item_id = shNode.GetItemParent(fixed_ct_item_id)
-            shNode.SetItemParent(eqd2_item_id, parent_item_id)
-            shNode.SetItemAttribute(eqd2_item_id, "DICOM.Modality", "RTDOSE")
+                # Rescate desde el nodo original si el actual es remuestreado
+                if not dose_uid and not study_uid:
+                    base_name = template_node.GetName().replace("_Resampled", "").split(": ")[-1]
+                    for v_node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+                        if v_node == template_node: continue
+                        if base_name in v_node.GetName():
+                            dose_uid, study_uid = find_attributes(v_node)
+                            if dose_uid or study_uid: break
 
-            # 3. Abrir ventana de exportación
-            slicer.modules.dicom.widgetRepresentation()
-            exportDialog = slicer.qSlicerDICOMExportDialog(None)
-            exportDialog.setMRMLScene(slicer.mrmlScene)
-            exportDialog.execDialog()
+                # Estrategia 1: UID Directo
+                if dose_uid:
+                    candidate = db.fileForInstance(dose_uid)
+                    if candidate and os.path.exists(candidate):
+                        if pydicom.dcmread(candidate, stop_before_pixels=True).Modality == "RTDOSE":
+                            original_file_path = candidate
+
+                # Estrategia 2: Detective de Nombres
+                if not original_file_path and study_uid and db.isOpen:
+                    clean_name = template_node.GetName().replace("_Resampled", "").split(": ")[-1].lower().strip()
+                    for series in db.seriesForStudy(study_uid):
+                        instances = db.instancesForSeries(series)
+                        if not instances: continue
+                        path = db.fileForInstance(instances[0])
+                        if path and os.path.exists(path):
+                            try:
+                                ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                if ds_temp.Modality == "RTDOSE" and (
+                                        clean_name in str(getattr(ds_temp, 'SeriesDescription', '')).lower()):
+                                    original_file_path = path
+                                    break
+                            except:
+                                pass
+
+            # ==========================================================
+            # 4. PLAN B: Selección Manual del RTDOSE (Red de seguridad)
+            # ==========================================================
+            if not original_file_path:
+                msg = ("Slicer lost the DICOM metadata of the original dose.\n\n"
+                       "Please manually select the ORIGINAL RTDOSE (.dcm) file of this patient to use as a template.")
+                slicer.util.warningDisplay(msg)
+                original_file_path = qt.QFileDialog.getOpenFileName(None, "Select the ORIGINAL RTDOSE (.dcm) file", "",
+                                                                    "DICOM Files (*.dcm);;All Files (*)")
+                if not original_file_path or not os.path.exists(original_file_path):
+                    slicer.util.errorDisplay("Export cancelled. A valid DICOM template is required for the TPS.")
+                    return
+                temp_ds = pydicom.dcmread(original_file_path, stop_before_pixels=True)
+                if temp_ds.Modality != "RTDOSE":
+                    slicer.util.errorDisplay(
+                        f"The selected file is a {temp_ds.Modality}, not an RTDOSE. Export cancelled.")
+                    return
+
+            slicer.util.showStatusMessage("Cloning DICOM template and injecting EQD2...")
+            slicer.app.processEvents()
+
+            # ==========================================================
+            # 5. CARGAR PLANTILLA E INYECTAR LA NUEVA FÍSICA EQD2
+            # ==========================================================
+            ds = pydicom.dcmread(original_file_path)
+            eqd2_array = slicer.util.arrayFromVolume(self.eqd2_node)
+
+            frames, rows, cols = eqd2_array.shape
+            ds.NumberOfFrames = frames
+            ds.Rows = rows
+            ds.Columns = cols
+
+            if hasattr(ds, 'GridFrameOffsetVector') and len(ds.GridFrameOffsetVector) >= 2:
+                z_step = float(ds.GridFrameOffsetVector[1]) - float(ds.GridFrameOffsetVector[0])
+            else:
+                z_step = self.eqd2_node.GetSpacing()[2]
+            ds.GridFrameOffsetVector = [round(i * z_step, 6) for i in range(frames)]
+
+            max_physical_dose = np.max(eqd2_array)
+            bits_allocated = getattr(ds, 'BitsAllocated', 16)
+            if bits_allocated == 16:
+                max_int = 65534.0
+                target_dtype = np.uint16
+            else:
+                max_int = 4294967294.0
+                target_dtype = np.uint32
+
+            if max_physical_dose > 0:
+                dose_grid_scaling = max_physical_dose / max_int
+                scaled_array = np.round(eqd2_array / dose_grid_scaling).astype(target_dtype)
+            else:
+                dose_grid_scaling = 1.0
+                scaled_array = np.zeros_like(eqd2_array, dtype=target_dtype)
+
+            ds.DoseGridScaling = dose_grid_scaling
+            ds.PixelData = scaled_array.tobytes()
+
+            # ==========================================================
+            # 6. LOCALIZAR EL RTPLAN ORIGINAL (con Ninja Fallback)
+            # ==========================================================
+            if 'ReferencedRTPlanSequence' not in ds or len(ds.ReferencedRTPlanSequence) == 0:
+                slicer.util.errorDisplay("The template RTDOSE has no Referenced RT Plan. Cannot build a shadow plan.")
+                return
+
+            plan_ref_item = ds.ReferencedRTPlanSequence[0]
+            original_plan_uid = plan_ref_item.ReferencedSOPInstanceUID
+            original_plan_path = db.fileForInstance(original_plan_uid)
+
+            # Ninja Fallback para RTPLAN si Slicer perdió el track directo
+            if (not original_plan_path or not os.path.exists(original_plan_path)) and study_uid and db.isOpen:
+                for series in db.seriesForStudy(study_uid):
+                    instances = db.instancesForSeries(series)
+                    if instances:
+                        path = db.fileForInstance(instances[0])
+                        if path and os.path.exists(path):
+                            try:
+                                ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                if ds_temp.Modality == "RTPLAN" and ds_temp.SOPInstanceUID == original_plan_uid:
+                                    original_plan_path = path
+                                    break
+                            except:
+                                pass
+
+            if not original_plan_path or not os.path.exists(original_plan_path):
+                slicer.util.warningDisplay(
+                    "Could not automatically locate the original RTPLAN.\n\n"
+                    "Please manually select the ORIGINAL RTPLAN (.dcm) file of this patient."
+                )
+                original_plan_path = qt.QFileDialog.getOpenFileName(
+                    None, "Select the ORIGINAL RTPLAN (.dcm) file", "", "DICOM Files (*.dcm);;All Files (*)")
+                if not original_plan_path or not os.path.exists(original_plan_path):
+                    slicer.util.errorDisplay("Export cancelled. A valid RTPLAN is required to build the shadow plan.")
+                    return
+
+            plan_full_ds = pydicom.dcmread(original_plan_path, stop_before_pixels=True)
+            if plan_full_ds.Modality != "RTPLAN":
+                slicer.util.errorDisplay(f"The selected file is a {plan_full_ds.Modality}, not an RTPLAN.")
+                return
+
+            slicer.util.showStatusMessage("Building shadow RTPLAN...")
+            slicer.app.processEvents()
+
+            # ==========================================================
+            # 6b. LOCALIZAR EL STRUCTURE SET ORIGINAL (con Ninja Fallback)
+            # ==========================================================
+            import shutil
+            rtstruct_path = None
+            if hasattr(plan_full_ds, 'ReferencedStructureSetSequence') and len(
+                    plan_full_ds.ReferencedStructureSetSequence) > 0:
+                rtstruct_uid = plan_full_ds.ReferencedStructureSetSequence[0].ReferencedSOPInstanceUID
+                rtstruct_path = db.fileForInstance(rtstruct_uid)
+
+                # Ninja Fallback para RTSTRUCT
+                if (not rtstruct_path or not os.path.exists(rtstruct_path)) and study_uid and db.isOpen:
+                    for series in db.seriesForStudy(study_uid):
+                        instances = db.instancesForSeries(series)
+                        if instances:
+                            path = db.fileForInstance(instances[0])
+                            if path and os.path.exists(path):
+                                try:
+                                    ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                    if ds_temp.Modality == "RTSTRUCT" and ds_temp.SOPInstanceUID == rtstruct_uid:
+                                        rtstruct_path = path
+                                        break
+                                except:
+                                    pass
+
+            if not rtstruct_path or not os.path.exists(rtstruct_path):
+                slicer.util.warningDisplay(
+                    "Could not automatically locate the original RTSTRUCT.\n\n"
+                    "Please manually select the ORIGINAL Structure Set (.dcm) file of this patient.\n"
+                    "Eclipse needs it to import the dose correctly."
+                )
+                rtstruct_path = qt.QFileDialog.getOpenFileName(
+                    None, "Select the ORIGINAL RTSTRUCT (.dcm) file", "", "DICOM Files (*.dcm);;All Files (*)")
+                if not rtstruct_path or not os.path.exists(rtstruct_path):
+                    slicer.util.errorDisplay("Export cancelled. The RTSTRUCT is required by Eclipse.")
+                    return
+                temp_struct_ds = pydicom.dcmread(rtstruct_path, stop_before_pixels=True)
+                if temp_struct_ds.Modality != "RTSTRUCT":
+                    slicer.util.errorDisplay(f"The selected file is a {temp_struct_ds.Modality}, not an RTSTRUCT.")
+                    return
+
+            rtstruct_filename = f"RTSTRUCT_original_{os.path.basename(rtstruct_path)}"
+            rtstruct_dest = os.path.join(output_dir, rtstruct_filename)
+            shutil.copy2(rtstruct_path, rtstruct_dest)
+
+            # ==========================================================
+            # 7. CREAR EL "PLAN SOMBRA"
+            # ==========================================================
+            plan_ds = pydicom.dcmread(original_plan_path)
+
+            new_plan_series_uid = generate_uid()
+            new_plan_sop_uid = generate_uid()
+            plan_ds.SeriesInstanceUID = new_plan_series_uid
+            plan_ds.SOPInstanceUID = new_plan_sop_uid
+
+            if hasattr(plan_ds, 'FractionGroupSequence'):
+                for fg in plan_ds.FractionGroupSequence:
+                    if 'ReferencedDoseSequence' in fg:
+                        del fg.ReferencedDoseSequence
+            if 'ReferencedDoseSequence' in plan_ds:
+                del plan_ds.ReferencedDoseSequence
+
+            if hasattr(plan_ds, 'ApprovalStatus'):
+                plan_ds.ApprovalStatus = "UNAPPROVED"
+
+            if hasattr(plan_ds, 'RTPlanLabel'):
+                plan_ds.RTPlanLabel = (str(plan_ds.RTPlanLabel)[:12] + "_EQD2")[:16]
+            plan_ds.SeriesDescription = "RadReirradiation_EQD2_ShadowPlan"
+
+            dt = datetime.datetime.now()
+            plan_ds.InstanceCreationDate = dt.strftime('%Y%m%d')
+            plan_ds.InstanceCreationTime = dt.strftime('%H%M%S')
+
+            plan_filename = f"RTPLAN_EQD2shadow_{dt.strftime('%H%M%S')}.dcm"
+            plan_save_path = os.path.join(output_dir, plan_filename)
+            pydicom.dcmwrite(plan_save_path, plan_ds)
+
+            # ==========================================================
+            # 8. MUTACIÓN CLÍNICA: Aislar el RTDOSE
+            # ==========================================================
+            ds.SeriesInstanceUID = generate_uid()
+            ds.SOPInstanceUID = generate_uid()
+            ds.SeriesDescription = "RadReirradiation_EQD2_Sum"
+
+            plan_ref_item.ReferencedSOPClassUID = plan_ds.SOPClassUID
+            plan_ref_item.ReferencedSOPInstanceUID = new_plan_sop_uid
+            ds.DoseSummationType = "PLAN"
+
+            if hasattr(ds, 'SeriesNumber'):
+                ds.SeriesNumber = int(ds.SeriesNumber) + 100
+            else:
+                ds.SeriesNumber = 999
+
+            ds.InstanceCreationDate = dt.strftime('%Y%m%d')
+            ds.InstanceCreationTime = dt.strftime('%H%M%S')
+            if hasattr(ds, 'ContentDate'): ds.ContentDate = ds.InstanceCreationDate
+            if hasattr(ds, 'ContentTime'): ds.ContentTime = ds.InstanceCreationTime
+
+            # 9. GUARDAR EL NUEVO ARCHIVO DE DOSIS
+            dose_filename = f"RTDOSE_EQD2_{dt.strftime('%H%M%S')}.dcm"
+            dose_save_path = os.path.join(output_dir, dose_filename)
+            pydicom.dcmwrite(dose_save_path, ds)
+
+            # 10. NOTIFICACIÓN DE ÉXITO
+            slicer.util.showStatusMessage(f"Success! Saved at: {output_dir}")
+            qt.QMessageBox.information(
+                None, "Export Successful",
+                f"DICOM files saved in:\n\n{output_dir}\n\n"
+                f"1) {rtstruct_filename}  (original Structure Set)\n"
+                f"2) {plan_filename}  (shadow RTPLAN)\n"
+                f"3) {dose_filename}  (EQD2 RTDOSE)\n\n"
+                "Select and import ALL THREE files together into Eclipse."
+            )
 
         except Exception as e:
-            slicer.util.errorDisplay(f"Export Error: {str(e)}")
+            import traceback
+            slicer.util.errorDisplay(f"An error occurred during export:\n{str(e)}")
+            traceback.print_exc()
 
+    def attemptSilentFractionExtraction(self, dose_node, spinbox):
+        """Busca silenciosamente el RTPLAN usando UIDs, o como último recurso, coincidencia de nombres en la BD."""
+        if not dose_node:
+            return
 
+        try:
+            import slicer
+            import pydicom
+            import os
+
+            shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            db = slicer.dicomDatabase
+
+            # =========================================================================
+            # 1. RASTREADOR DE ATRIBUTOS (Busca UID de Dosis o UID de Estudio)
+            # =========================================================================
+            dose_uid = None
+            study_uid = None
+
+            def find_attributes_in_hierarchy(node):
+                d_uid, s_uid = None, None
+                if node.GetAttribute("DICOM.instanceUIDs"):
+                    d_uid = node.GetAttribute("DICOM.instanceUIDs").split()[0]
+
+                item = shNode.GetItemByDataNode(node)
+                while item:
+                    if not d_uid and shNode.GetItemAttribute(item, "DICOM.instanceUIDs"):
+                        d_uid = shNode.GetItemAttribute(item, "DICOM.instanceUIDs").split()[0]
+                    if not s_uid and shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID"):
+                        s_uid = shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID")
+                    if d_uid and s_uid: break
+                    item = shNode.GetItemParent(item)
+                return d_uid, s_uid
+
+            dose_uid, study_uid = find_attributes_in_hierarchy(dose_node)
+
+            if not dose_uid and not study_uid:
+                base_name = dose_node.GetName().replace("_Resampled", "").split(": ")[-1]
+                for v_node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+                    if v_node == dose_node: continue
+                    if base_name in v_node.GetName():
+                        dose_uid, study_uid = find_attributes_in_hierarchy(v_node)
+                        if dose_uid or study_uid: break
+
+            target_plan_path = None
+            plan_ref_item = None
+
+            # =========================================================================
+            # ESTRATEGIA A: Match Perfecto (UID Directo)
+            # =========================================================================
+            if dose_uid:
+                dose_path = db.fileForInstance(dose_uid)
+                if dose_path and os.path.exists(dose_path):
+                    ds_dose = pydicom.dcmread(dose_path, stop_before_pixels=True)
+                    if hasattr(ds_dose, 'ReferencedRTPlanSequence') and len(ds_dose.ReferencedRTPlanSequence) > 0:
+                        plan_ref_item = ds_dose.ReferencedRTPlanSequence[0]
+                        target_plan_path = db.fileForInstance(plan_ref_item.ReferencedSOPInstanceUID)
+
+            # =========================================================================
+            # ESTRATEGIA B: Match Familiar (Study UID)
+            # =========================================================================
+            if not target_plan_path and study_uid:
+                for s in db.seriesForStudy(study_uid):
+                    instances = db.instancesForSeries(s)
+                    if instances:
+                        temp_path = db.fileForInstance(instances[0])
+                        if temp_path and os.path.exists(temp_path):
+                            if pydicom.dcmread(temp_path, stop_before_pixels=True).Modality == "RTPLAN":
+                                target_plan_path = temp_path
+                                break
+
+            # =========================================================================
+            # ESTRATEGIA C: El Detective de Nombres (Búsqueda Ciega en DB)
+            # =========================================================================
+            if not target_plan_path and db.isOpen:
+                print(f"DEBUG Ninja: Iniciando búsqueda ciega por nombre para '{dose_node.GetName()}'...")
+                # Limpiar el nombre (ej. quitar "36: " y "_Resampled")
+                clean_name = dose_node.GetName().replace("_Resampled", "")
+                clean_name = clean_name.split(": ")[-1].lower().strip()
+
+                found_study_uid = None
+
+                # 1. Buscar a qué estudio pertenece basándose en el nombre de la Serie de la Dosis
+                for patient in db.patients():
+                    for study in db.studiesForPatient(patient):
+                        for series in db.seriesForStudy(study):
+                            instances = db.instancesForSeries(series)
+                            if not instances: continue
+                            path = db.fileForInstance(instances[0])
+                            if path and os.path.exists(path):
+                                try:
+                                    ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                    if ds_temp.Modality == "RTDOSE":
+                                        series_desc = str(getattr(ds_temp, 'SeriesDescription', '')).lower()
+                                        if clean_name in series_desc or series_desc in clean_name:
+                                            found_study_uid = study
+                                            print(
+                                                f"DEBUG Ninja: Coincidencia de nombre! Dosis pertenece al estudio: {study}")
+                                            break
+                                except:
+                                    pass
+                        if found_study_uid: break
+                    if found_study_uid: break
+
+                # 2. Si encontramos el estudio, atrapar su RTPLAN
+                if found_study_uid:
+                    for series in db.seriesForStudy(found_study_uid):
+                        instances = db.instancesForSeries(series)
+                        if not instances: continue
+                        path = db.fileForInstance(instances[0])
+                        if path and os.path.exists(path):
+                            try:
+                                if pydicom.dcmread(path, stop_before_pixels=True).Modality == "RTPLAN":
+                                    target_plan_path = path
+                                    print(f"DEBUG Ninja: Plan recuperado mediante Estrategia C -> {path}")
+                                    break
+                            except:
+                                pass
+
+            # =========================================================================
+            # EXTRACCIÓN DE FRACCIONES
+            # =========================================================================
+            if not target_plan_path or not os.path.exists(target_plan_path):
+                print(
+                    f"DEBUG Ninja: Todas las estrategias fallaron. Slicer desconectó totalmente '{dose_node.GetName()}'.")
+                return
+
+            ds_plan = pydicom.dcmread(target_plan_path, stop_before_pixels=True)
+            if not hasattr(ds_plan, 'FractionGroupSequence') or len(ds_plan.FractionGroupSequence) == 0:
+                return
+
+            referenced_fg_numbers = None
+            if plan_ref_item and hasattr(plan_ref_item, 'ReferencedFractionGroupSequence'):
+                referenced_fg_numbers = {
+                    int(fg.ReferencedFractionGroupNumber)
+                    for fg in plan_ref_item.ReferencedFractionGroupSequence
+                }
+
+            if referenced_fg_numbers:
+                relevant_fgs = [fg for fg in ds_plan.FractionGroupSequence
+                                if int(getattr(fg, 'FractionGroupNumber', -1)) in referenced_fg_numbers]
+            else:
+                relevant_fgs = list(ds_plan.FractionGroupSequence)
+
+            total_fractions = sum(
+                int(fg.NumberOfFractionsPlanned) for fg in relevant_fgs
+                if hasattr(fg, 'NumberOfFractionsPlanned')
+            )
+
+            if total_fractions > 0:
+                spinbox.setValue(total_fractions)
+                print(f"ÉXITO Ninja: {total_fractions} fracciones inyectadas para '{dose_node.GetName()}'.")
+
+        except Exception as e:
+            pass  # Silencio absoluto ante errores
+
+    def onExportPdfClicked(self):
+        """Recopila los datos del análisis, genera una plantilla HTML robusta y la exporta como PDF nativo mediante Qt."""
+        import qt
+        import datetime
+        import os
+        import slicer
+
+        # 1. Pedir al usuario dónde guardar el PDF
+        default_name = f"RadReirradiation_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        save_path = qt.QFileDialog.getSaveFileName(None, "Save Clinical Report", default_name, "PDF Files (*.pdf)")
+        if not save_path:
+            return
+
+        slicer.util.showStatusMessage("Generating PDF Report...")
+        slicer.app.processEvents()
+
+        # ==========================================
+        # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ (Tu código original)
+        # ==========================================
+        date_str = datetime.datetime.now().strftime("%B %d, %Y - %H:%M:%S")
+
+        # Nombres de archivos (Usando tus variables exactas)
+        dose_a_node = self.dose_a_selector.currentNode() if hasattr(self, 'dose_a_selector') else None
+        dose_b_node = self.dose_b_selector.currentNode() if hasattr(self, 'dose_b_selector') else None
+
+        dose_a_name = dose_a_node.GetName() if dose_a_node else "N/A"
+        dose_b_name = dose_b_node.GetName() if dose_b_node else "N/A"
+
+        # Intentar capturar el RTSTRUCT
+        rtstruct_name = "N/A"
+        if hasattr(self, 'struct_selector') and self.struct_selector.currentNode():
+            rtstruct_name = self.struct_selector.currentNode().GetName()
+
+        registration_status = "Manual Alignment / Resampled" if "_Resampled" in dose_a_name or "_Resampled" in dose_b_name else "Native DICOM Coordinates"
+
+        # Extracción de Paciente desde la dosis planificada (RT2)
+        patient_name = "Unknown Patient"
+        patient_id = "Unknown ID"
+        if dose_b_node:
+            try:
+                shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+                item_id = shNode.GetItemByDataNode(dose_b_node)
+                while item_id:
+                    p_name = shNode.GetItemAttribute(item_id, "DICOM.PatientName")
+                    p_id = shNode.GetItemAttribute(item_id, "DICOM.PatientID")
+                    if p_name: patient_name = p_name.replace('^', ' ').strip()
+                    if p_id: patient_id = p_id.strip()
+                    if p_name or p_id: break
+                    item_id = shNode.GetItemParent(item_id)
+            except:
+                pass
+
+        # Parámetros Biológicos
+        frac_a = self.fractions_a_spinbox.value
+        frac_b = self.fractions_b_spinbox.value
+        ab_oar = self.ab_spinbox.value
+        ab_tumor = self.ab_tumor_spinbox.value
+
+        # Recuperación Tisular
+        recovery_enabled = self.recovery_checkbox.isChecked()
+        recovery_months = self.months_spinbox.value if recovery_enabled else "N/A"
+        recovery_factor_str = "Applied" if recovery_enabled else "None (100% BED combination)"
+
+        # Restricción Dmax
+        dmax_constraint = self.dmax_volume_spinbox.value
+
+        # Recopilar datos de la tabla de métricas (Tu bucle funcional + Nuevas columnas)
+        table_html = ""
+        rows = self.metrics_table.rowCount
+        for row in range(rows):
+            struct_item = self.metrics_table.item(row, 0)
+            dmax_item = self.metrics_table.item(row, 1)
+            mean_item = self.metrics_table.item(row, 2)
+
+            struct_name = struct_item.text() if struct_item else ""
+            dmax_val = dmax_item.text() if dmax_item else ""
+            mean_val = mean_item.text() if mean_item else ""
+
+            if not struct_name: continue
+
+            # Lógica extraída de tu tabla biológica
+            is_target = "PTV" in struct_name.upper() or "GTV" in struct_name.upper() or "CTV" in struct_name.upper()
+            assigned_role = "Target" if is_target else "OAR"
+            assigned_ab = f"{ab_tumor} Gy" if is_target else f"{ab_oar} Gy"
+
+            table_html += f"<tr><td>{struct_name}</td><td>{assigned_role}</td><td>{assigned_ab}</td><td>{dmax_val}</td><td>{mean_val}</td></tr>"
+
+        # ==========================================
+        # 3. CONSTRUCCIÓN DE LA PLANTILLA HTML (Tu estilo seguro original)
+        # ==========================================
+        html_content = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
+                h1 {{ color: #2c3e50; text-align: center; border-bottom: 2px solid #2980b9; padding-bottom: 10px; }}
+                h2 {{ color: #2980b9; margin-top: 20px; border-bottom: 1px solid #bdc3c7; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                th {{ background-color: #f2f2f2; color: #333; font-weight: bold; }}
+                .meta-info {{ font-size: 0.9em; color: #7f8c8d; text-align: right; }}
+            </style>
+        </head>
+        <body>
+            <h1>RadReirradiation Clinical Report</h1>
+            <div class="meta-info">Report Generated: {date_str}</div>
+
+            <h2>1. Patient Information & Registration</h2>
+            <table>
+                <tr><th>Parameter</th><th>Details</th></tr>
+                <tr><td>Patient Name</td><td>{patient_name}</td></tr>
+                <tr><td>Patient ID</td><td>{patient_id}</td></tr>
+                <tr><td>Previous Dose (RT1)</td><td>{dose_a_name}</td></tr>
+                <tr><td>Planned Dose (RT2)</td><td>{dose_b_name}</td></tr>
+                <tr><td>Structure Set (RTSTRUCT)</td><td>{rtstruct_name}</td></tr>
+                <tr><td>Registration Status</td><td>{registration_status}</td></tr>
+            </table>
+
+            <h2>2. Biological & Fractionation Parameters</h2>
+            <table>
+                <tr><th>Parameter</th><th>Value</th></tr>
+                <tr><td>Fractions (RT1 - Previous)</td><td>{frac_a}</td></tr>
+                <tr><td>Fractions (RT2 - Planned)</td><td>{frac_b}</td></tr>
+                <tr><td>Time-based Recovery Enabled</td><td>{'Yes' if recovery_enabled else 'No'}</td></tr>
+                <tr><td>Time Interval (Months)</td><td>{recovery_months}</td></tr>
+                <tr><td>Discount Factor Applied</td><td>{recovery_factor_str}</td></tr>
+            </table>
+
+            <h2>3. EQD2 Cumulative Dosimetric Metrics</h2>
+            <p><strong>DMax Volume Constraint:</strong> {dmax_constraint} cc</p>
+            <table>
+                <tr>
+                    <th>Structure Name</th>
+                    <th>Biological Role</th>
+                    <th>&alpha;/&beta; Used</th>
+                    <th>DMax (Gy)</th>
+                    <th>Mean Dose (Gy)</th>
+                </tr>
+                {table_html}
+            </table>
+
+            <br><br>
+            <p style="text-align:center; font-size: 0.8em; color: #7f8c8d;">
+                * This report is generated by RadReirradiation for 3D Slicer.<br>
+                * Please review all EQD2 and BED summations clinically before use.
+            </p>
+        </body>
+        </html>
+        """
+
+        # ==========================================
+        # 4. EXPORTACIÓN A PDF MEDIANTE QTextDocument
+        # ==========================================
+        try:
+            document = qt.QTextDocument()
+            document.setHtml(html_content)
+
+            printer = qt.QPrinter(qt.QPrinter.HighResolution)
+            printer.setOutputFormat(qt.QPrinter.PdfFormat)
+            printer.setOutputFileName(save_path)
+
+            # Ajustes de página
+            printer.setPageSize(qt.QPageSize(qt.QPageSize.A4))
+            printer.setPageMargins(qt.QMarginsF(15, 15, 15, 15), qt.QPageLayout.Millimeter)
+
+            document.print_(printer)
+
+            slicer.util.showStatusMessage("Report successfully saved!")
+            qt.QMessageBox.information(None, "Success", f"Clinical report saved successfully at:\n\n{save_path}")
+
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to generate PDF:\n{str(e)}")
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
