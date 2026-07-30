@@ -543,12 +543,22 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Añadir el botón de exportación al layout
         metricsFormLayout.addRow(self.exportButton)
 
+        # --- Botón de Exportación de Reporte PDF ---
+        self.exportPdfButton = qt.QPushButton("Export Clinical Report (PDF)")
+        self.exportPdfButton.toolTip = "Generates a detailed PDF report with the analysis configuration and dosimetric results."
+        self.exportPdfButton.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 5px;")
+        # Nace apagado hasta que se calculen las métricas
+        self.exportPdfButton.enabled = False
+
+        metricsFormLayout.addRow(self.exportPdfButton)
+
         # =======================================================
         # CONEXIONES DE SEÑALES
         # =======================================================
         self.calc_metrics_button.connect('clicked(bool)', self.onCalculateMetrics)
         self.plot_dvh_button.connect('clicked(bool)', self.onGenerateDVH)
         self.exportButton.connect('clicked(bool)', self.onExportDICOMClicked)
+        self.exportPdfButton.connect('clicked(bool)', self.onExportPdfClicked)
         # Conexiones Ninja para intentar auto-rellenar las fracciones en silencio
         if hasattr(self, 'moving_dose_selector'):
             self.moving_dose_selector.connect('currentNodeChanged(vtkMRMLNode*)',
@@ -1332,6 +1342,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             row += 1
 
         slicer.util.showStatusMessage(f"Metrics generated successfully with DMax at {dmax_cc}cc!")
+        self.exportPdfButton.enabled = True #habilitar exportacion de PDF
 
     def onGenerateDVH(self):
         """Genera el DVH con Zoom Clínico Volumétrico y Tooltips Recuperados"""
@@ -1997,6 +2008,179 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         except Exception as e:
             pass  # Silencio absoluto ante errores
+
+    def onExportPdfClicked(self):
+        """Recopila los datos del análisis, genera una plantilla HTML robusta y la exporta como PDF nativo mediante Qt."""
+        import qt
+        import datetime
+        import os
+        import slicer
+
+        # 1. Pedir al usuario dónde guardar el PDF
+        default_name = f"RadReirradiation_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        save_path = qt.QFileDialog.getSaveFileName(None, "Save Clinical Report", default_name, "PDF Files (*.pdf)")
+        if not save_path:
+            return
+
+        slicer.util.showStatusMessage("Generating PDF Report...")
+        slicer.app.processEvents()
+
+        # ==========================================
+        # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ (Tu código original)
+        # ==========================================
+        date_str = datetime.datetime.now().strftime("%B %d, %Y - %H:%M:%S")
+
+        # Nombres de archivos (Usando tus variables exactas)
+        dose_a_node = self.dose_a_selector.currentNode() if hasattr(self, 'dose_a_selector') else None
+        dose_b_node = self.dose_b_selector.currentNode() if hasattr(self, 'dose_b_selector') else None
+
+        dose_a_name = dose_a_node.GetName() if dose_a_node else "N/A"
+        dose_b_name = dose_b_node.GetName() if dose_b_node else "N/A"
+
+        # Intentar capturar el RTSTRUCT
+        rtstruct_name = "N/A"
+        if hasattr(self, 'struct_selector') and self.struct_selector.currentNode():
+            rtstruct_name = self.struct_selector.currentNode().GetName()
+
+        registration_status = "Manual Alignment / Resampled" if "_Resampled" in dose_a_name or "_Resampled" in dose_b_name else "Native DICOM Coordinates"
+
+        # Extracción de Paciente desde la dosis planificada (RT2)
+        patient_name = "Unknown Patient"
+        patient_id = "Unknown ID"
+        if dose_b_node:
+            try:
+                shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+                item_id = shNode.GetItemByDataNode(dose_b_node)
+                while item_id:
+                    p_name = shNode.GetItemAttribute(item_id, "DICOM.PatientName")
+                    p_id = shNode.GetItemAttribute(item_id, "DICOM.PatientID")
+                    if p_name: patient_name = p_name.replace('^', ' ').strip()
+                    if p_id: patient_id = p_id.strip()
+                    if p_name or p_id: break
+                    item_id = shNode.GetItemParent(item_id)
+            except:
+                pass
+
+        # Parámetros Biológicos
+        frac_a = self.fractions_a_spinbox.value
+        frac_b = self.fractions_b_spinbox.value
+        ab_oar = self.ab_spinbox.value
+        ab_tumor = self.ab_tumor_spinbox.value
+
+        # Recuperación Tisular
+        recovery_enabled = self.recovery_checkbox.isChecked()
+        recovery_months = self.months_spinbox.value if recovery_enabled else "N/A"
+        recovery_factor_str = "Applied" if recovery_enabled else "None (100% BED combination)"
+
+        # Restricción Dmax
+        dmax_constraint = self.dmax_volume_spinbox.value
+
+        # Recopilar datos de la tabla de métricas (Tu bucle funcional + Nuevas columnas)
+        table_html = ""
+        rows = self.metrics_table.rowCount
+        for row in range(rows):
+            struct_item = self.metrics_table.item(row, 0)
+            dmax_item = self.metrics_table.item(row, 1)
+            mean_item = self.metrics_table.item(row, 2)
+
+            struct_name = struct_item.text() if struct_item else ""
+            dmax_val = dmax_item.text() if dmax_item else ""
+            mean_val = mean_item.text() if mean_item else ""
+
+            if not struct_name: continue
+
+            # Lógica extraída de tu tabla biológica
+            is_target = "PTV" in struct_name.upper() or "GTV" in struct_name.upper() or "CTV" in struct_name.upper()
+            assigned_role = "Target" if is_target else "OAR"
+            assigned_ab = f"{ab_tumor} Gy" if is_target else f"{ab_oar} Gy"
+
+            table_html += f"<tr><td>{struct_name}</td><td>{assigned_role}</td><td>{assigned_ab}</td><td>{dmax_val}</td><td>{mean_val}</td></tr>"
+
+        # ==========================================
+        # 3. CONSTRUCCIÓN DE LA PLANTILLA HTML (Tu estilo seguro original)
+        # ==========================================
+        html_content = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
+                h1 {{ color: #2c3e50; text-align: center; border-bottom: 2px solid #2980b9; padding-bottom: 10px; }}
+                h2 {{ color: #2980b9; margin-top: 20px; border-bottom: 1px solid #bdc3c7; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                th {{ background-color: #f2f2f2; color: #333; font-weight: bold; }}
+                .meta-info {{ font-size: 0.9em; color: #7f8c8d; text-align: right; }}
+            </style>
+        </head>
+        <body>
+            <h1>RadReirradiation Clinical Report</h1>
+            <div class="meta-info">Report Generated: {date_str}</div>
+
+            <h2>1. Patient Information & Registration</h2>
+            <table>
+                <tr><th>Parameter</th><th>Details</th></tr>
+                <tr><td>Patient Name</td><td>{patient_name}</td></tr>
+                <tr><td>Patient ID</td><td>{patient_id}</td></tr>
+                <tr><td>Previous Dose (RT1)</td><td>{dose_a_name}</td></tr>
+                <tr><td>Planned Dose (RT2)</td><td>{dose_b_name}</td></tr>
+                <tr><td>Structure Set (RTSTRUCT)</td><td>{rtstruct_name}</td></tr>
+                <tr><td>Registration Status</td><td>{registration_status}</td></tr>
+            </table>
+
+            <h2>2. Biological & Fractionation Parameters</h2>
+            <table>
+                <tr><th>Parameter</th><th>Value</th></tr>
+                <tr><td>Fractions (RT1 - Previous)</td><td>{frac_a}</td></tr>
+                <tr><td>Fractions (RT2 - Planned)</td><td>{frac_b}</td></tr>
+                <tr><td>Time-based Recovery Enabled</td><td>{'Yes' if recovery_enabled else 'No'}</td></tr>
+                <tr><td>Time Interval (Months)</td><td>{recovery_months}</td></tr>
+                <tr><td>Discount Factor Applied</td><td>{recovery_factor_str}</td></tr>
+            </table>
+
+            <h2>3. EQD2 Cumulative Dosimetric Metrics</h2>
+            <p><strong>DMax Volume Constraint:</strong> {dmax_constraint} cc</p>
+            <table>
+                <tr>
+                    <th>Structure Name</th>
+                    <th>Biological Role</th>
+                    <th>&alpha;/&beta; Used</th>
+                    <th>DMax (Gy)</th>
+                    <th>Mean Dose (Gy)</th>
+                </tr>
+                {table_html}
+            </table>
+
+            <br><br>
+            <p style="text-align:center; font-size: 0.8em; color: #7f8c8d;">
+                * This report is generated by RadReirradiation for 3D Slicer.<br>
+                * Please review all EQD2 and BED summations clinically before use.
+            </p>
+        </body>
+        </html>
+        """
+
+        # ==========================================
+        # 4. EXPORTACIÓN A PDF MEDIANTE QTextDocument
+        # ==========================================
+        try:
+            document = qt.QTextDocument()
+            document.setHtml(html_content)
+
+            printer = qt.QPrinter(qt.QPrinter.HighResolution)
+            printer.setOutputFormat(qt.QPrinter.PdfFormat)
+            printer.setOutputFileName(save_path)
+
+            # Ajustes de página
+            printer.setPageSize(qt.QPageSize(qt.QPageSize.A4))
+            printer.setPageMargins(qt.QMarginsF(15, 15, 15, 15), qt.QPageLayout.Millimeter)
+
+            document.print_(printer)
+
+            slicer.util.showStatusMessage("Report successfully saved!")
+            qt.QMessageBox.information(None, "Success", f"Clinical report saved successfully at:\n\n{save_path}")
+
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to generate PDF:\n{str(e)}")
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
