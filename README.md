@@ -6,42 +6,36 @@
 
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
 
-## 🚀 What's New (Latest Update)
+## 🚀 What's New in Version 2.0 (Clinical Workflow Update)
 
-### 1. Structure-Specific Biological Roles & Dual Alpha/Beta (α/β)
+### 1. Automated TPS DICOM Export (Eclipse Ready)
+* **Seamless Export:** Export your accumulated EQD2 dose directly back to commercial TPS environments (like Varian Eclipse). The algorithm automatically traces the original DICOM metadata, generates a "shadow" RTPLAN, and bundles the original RTSTRUCT to ensure 100% compatibility upon import, bypassing standard TPS dose-lock restrictions.
+
+### 2. Native Clinical PDF Reporting
+* **One-Click Documentation:** Generate comprehensive, print-ready PDF clinical reports directly within Slicer. The report automatically extracts patient metadata (Name, ID) from the DICOM hierarchy and logs all registration parameters, biological roles, temporal recovery factors, and cumulative dosimetric metrics (DMax, DMean) for legal and clinical traceability.
+
+### 3. Smart DICOM Fraction Auto-Detection
+* **Silent Metadata Tracking:** The module now utilizes advanced hierarchical attribute tracking to automatically locate the source `RTPLAN` of any selected `RTDOSE`. It silently extracts and populates the exact number of planned fractions, eliminating manual entry and reducing human error. 
+
+### 4. Structure-Specific Biological Roles & Dual Alpha/Beta (α/β)
 * **Interactive Roles Table:** A new Biological Configuration panel allows users to dynamically assign 'Tumor' or 'OAR' (Organ At Risk) roles to each visible structure.
-* **Simultaneous Dual α/β Calculation:** The module now supports computing EQD2/BED using two distinct α/β ratios simultaneously in a single run. This eliminates the need for repetitive workflows when evaluating both tumor control and late tissue toxicity.
+* **Simultaneous Dual α/β Calculation:** Compute EQD2/BED using two distinct α/β ratios simultaneously in a single run, eliminating repetitive workflows when evaluating both tumor control and late tissue toxicity.
 
-### 2. DVH Enhancements: Absolute vs. Relative Volume
-* **Volume Unit Toggle:** The Dose-Volume Histogram (DVH) now features a seamless toggle between Relative Volume (%) and Absolute Volume (cc). The algorithm extracts precise voxel spacing dimensions directly from the DICOM metadata for highly accurate volumetric rendering.
-
-### 3. Clinical Data Integrity (Auto-Reset UI)
-* **Active Safety Interlocks:** Implemented a strict "Reset Before Calculate" protocol. If any configuration parameter (e.g., α/β ratios, fractions, biological roles) is modified after a calculation, the metric tables and DVH plots are instantly cleared from the Slicer scene. This eliminates the clinical risk of misinterpreting residual dosimetric data.
-
-### 4. Advanced Manual Registration & Smart Algorithm Bypass
-* **Full 6-DOF Manual Control:** Added precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment. Includes a smart memory cache to ensure smooth rotations without origin-shift artifacts (the "needle effect").
-* **Smart BRAINSFit Protection:** To guarantee algorithmic stability, rotational controls are dynamically disabled and reset when using the Automatic Registration mode. 
-* **"Manual Only" Mode:** A progressive disclosure UI that allows users to bypass the intensive auto-registration engine completely, applying the manual transform directly to the dose and resampling it instantly.
+### 5. Advanced Manual Registration & Smart Algorithm Bypass
+* **Full 6-DOF Manual Control:** Precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment, equipped with a smart memory cache to ensure smooth rotations without origin-shift artifacts.
 
 ## Features 🚀
-* **Structure-Specific Biological Roles:** Interactively assign 'Tumor' or 'OAR' roles to individual structures.
-* **Dual Alpha/Beta (α/β) Support:** Simultaneous EQD2 calculation using distinct ratios for tumors and OARs.
-* **Absolute & Relative DVH:** Toggle between Relative Volume (%) and Absolute Volume (cc).
-* **Interactive Manual Pre-Alignment:** Introduced a brand-new, safe manual pre-alignment panel. Users can now translate the Moving CT using intuitive sliders before running the automatic registration.
-* **Smart "Auto-Center" for CBCTs:** Added a one-click "Auto-Center CTs" button. It calculates the true RAS mathematical center of both datasets (bypassing FOV discrepancies common in Linac CBCTs) and teleports the images to match, automatically jumping all 2D slice views to the new target.
-* **Image Registration Wrapper:** Automated Rigid, Affine and Deformable (B-Spline) registration workflows using the BRAINSFit engine, eliminating the need to switch between multiple Slicer modules.
-* **Auto-Resampling Dose Engine:** Automatically resamples the moving dose grid to perfectly match the reference geometry, preventing matrix dimension errors during biological accumulation.
-* **Smart UI Automation:** The module intelligently auto-selects the aligned volumes for the biological calculation step, reducing human error.
-* **Time-Corrected Radiobiology:** Full support for standard LQ model (BED and EQD2) with temporal recovery factors for accurate reirradiation assessment.
-* **Voxel-by-Voxel processing:** Operates directly on DICOM RTDOSE arrays using NumPy for high-performance biological conversion.
-* **Simultaneous Integrated Boost (SIB) support:** Automatically respects varying dose-per-fraction gradients within the same volume.
-* **Time-Based Recovery Factor:** Applies partial biological recovery discounts to the base plan based on the interval between treatments.
-* **"Eclipse-Style" Dose Wash:** Custom dynamic color map transition (Dark Blue to Red) with a 2 Gy threshold and 40% opacity, replicating the familiar visual experience of commercial Treatment Planning Systems (TPS).
-* **Seamless SlicerRT Integration:** Output volumes are directly compatible with SlicerRT's Dose Volume Histogram (DVH) module.
+* **Smart UI & Automation:** The module intelligently auto-selects aligned volumes and retrieves fraction data directly from the DICOM database.
+* **Absolute & Relative DVH:** Toggle between Relative Volume (%) and Absolute Volume (cc) directly on the generated Dose-Volume Histogram.
+* **Image Registration Wrapper:** Automated Rigid, Affine and Deformable (B-Spline) registration workflows using the BRAINSFit engine.
+* **Auto-Resampling Dose Engine:** Automatically resamples the moving dose grid to perfectly match the reference geometry, preventing matrix dimension errors.
+* **Time-Corrected Radiobiology:** Full support for standard LQ model (BED and EQD2) with temporal recovery factors (0 to 6+ months) for accurate reirradiation assessment.
+* **Voxel-by-Voxel Processing:** Operates directly on DICOM RTDOSE arrays using NumPy for high-performance biological conversion.
+* **"Eclipse-Style" Dose Wash:** Custom dynamic color map transition (Dark Blue to Red) with a 2 Gy threshold and 40% opacity.
+* **Clinical Safety First:** Automated UI resets and dynamic control locking ensure data integrity if configuration parameters are changed post-calculation.
 * **Dosimetric Analysis:** Metrics table (Dmax, Dmean) synchronized with structure visibility.
 *  **DVH Generation:** Generation of interactive DVH curves within the Slicer.
 * **Hybrid Image Registration:** Choose between fully automatic Rigid/Deformable registration (powered by BRAINSFit) or highly precise Manual Alignment with 6 Degrees of Freedom (Translational & Rotational).
-* **Clinical Safety First:** Automated UI resets and dynamic control locking ensure data integrity and prevent algorithmic errors during the workflow.
 
 ## 📚 Scientific Foundation and References
 The development of RadReirradiation is based on international standards for reporting and accumulating biological doses.
@@ -120,7 +114,7 @@ covering the full reirradiation analysis workflow:
 
 **1. Data Preparation: From TPS to 3D Slicer**
 
-To perform an accurate re-irradiation analysis, you must export two complete datasets from your Treatment Planning System (TPS): the Previous (1) Treatment and the Current/Planned Treatment (2).
+To perform an accurate re-irradiation analysis, you must export two complete datasets (in the same folder) from your Treatment Planning System (TPS): the Previous (1) Treatment and the Current/Planned Treatment (2).
 
 <img width="679" height="266" alt="0" src="https://github.com/user-attachments/assets/4493ec9f-dac8-485c-b845-ac161f34d67d" />
 
@@ -142,9 +136,10 @@ Succesfull exportation of the previous treatmet, repeat the same steps for the c
 Ensure you have the SlicerRT extension installed. It is a mandatory requirement to read and process Radiotherapy DICOM files. Drag and drop your exported DICOM folders into the 3D Slicer application or use the native DICOM Browser and click on Examine button.
 
 <img width="1202" height="772" alt="3" src="https://github.com/user-attachments/assets/c8e57085-13bf-4b7d-af89-d7e2dae9fa4e" />
-<img width="1916" height="995" alt="4" src="https://github.com/user-attachments/assets/79303f7a-ca0d-4811-878f-30696658eed1" />
-Once the DICOM files are loaded only check the TAC, RD and RS of the previous and current treatmets, click on Load button. RP is optional; it is not used in this version but will be used in future developments.  
-<img width="1380" height="245" alt="5" src="https://github.com/user-attachments/assets/0d384dfb-b3c6-46e5-8363-484765c64c5d" />
+
+Once the DICOM files are loaded only check the TAC, RD and RS of the previous and current treatmets, click on Load button. RP is optional; it is not used in this version but will be used in future developments. 
+<img width="1915" height="1006" alt="LOAD DATA" src="https://github.com/user-attachments/assets/f5d0f31f-3503-4d56-af19-47d86d661bb8" />
+ 
 Crucial Steps: When the DICOM import window appears, ensure the "eye" icon next to your RT Structures is toggled ON (visible). If this icon is closed, the structures will not be loaded into the scene and the DVH cannot be evaluated.
 
 Data Organization Tip:
@@ -168,7 +163,7 @@ Launching the Module:
 **RadReirradiation**  has 4 important modules, which are:
 
 1. Data selection and image registration with Dose resample.
-2. Structures visualization (important for the DVH analysis).
+2. Structures visualization and Biolgical Role (important for the DVH analysis).
 3. Reirradiation calculation settings.
 4. Metrics an DVH results.
      
