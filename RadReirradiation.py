@@ -549,6 +549,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.calc_metrics_button.connect('clicked(bool)', self.onCalculateMetrics)
         self.plot_dvh_button.connect('clicked(bool)', self.onGenerateDVH)
         self.exportButton.connect('clicked(bool)', self.onExportDICOMClicked)
+        # Conexiones Ninja para intentar auto-rellenar las fracciones en silencio
+        if hasattr(self, 'moving_dose_selector'):
+            self.moving_dose_selector.connect('currentNodeChanged(vtkMRMLNode*)',
+                                              lambda node: self.attemptSilentFractionExtraction(node,
+                                                                                                self.fractions_a_spinbox))
+
+        if hasattr(self, 'fixed_dose_selector'):
+            self.fixed_dose_selector.connect('currentNodeChanged(vtkMRMLNode*)',
+                                             lambda node: self.attemptSilentFractionExtraction(node,
+                                                                                               self.fractions_b_spinbox))
 
         # Empuja todo hacia arriba para que quede ordenado
         self.layout.addStretch(1)
@@ -1529,6 +1539,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import numpy as np
         import qt
         import datetime
+        import slicer
 
         try:
             import pydicom
@@ -1547,34 +1558,71 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if not output_dir:
                 return
 
-            slicer.util.showStatusMessage("Searching for DICOM template...")
+            slicer.util.showStatusMessage("Searching for DICOM template seamlessly...")
             slicer.app.processEvents()
 
             # ==========================================================
-            # 3. PLAN A: Búsqueda Automática del RTDOSE original
+            # 3. PLAN A: Búsqueda Ninja del RTDOSE original
             # ==========================================================
             original_file_path = None
             shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            db = slicer.dicomDatabase
+            template_node = self.fixed_dose_selector.currentNode()
+            dose_uid, study_uid = None, None
 
-            nodes_to_check = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"))
-            for node in nodes_to_check:
-                if not node: continue
-                uid = node.GetAttribute("DICOM.instanceUIDs")
-                if not uid:
-                    item_id = shNode.GetItemByDataNode(node)
-                    if item_id:
-                        uid = shNode.GetItemAttribute(item_id, "DICOM.instanceUIDs")
-                if uid:
-                    uid = uid.split()[0]
-                    path = slicer.dicomDatabase.fileForInstance(uid)
-                    if path and os.path.exists(path):
-                        temp_ds = pydicom.dcmread(path, stop_before_pixels=True)
-                        if temp_ds.Modality == "RTDOSE":
-                            original_file_path = path
-                            break
+            if template_node:
+                # Rastreador de atributos en jerarquía
+                def find_attributes(node):
+                    d_uid, s_uid = None, None
+                    if node.GetAttribute("DICOM.instanceUIDs"):
+                        d_uid = node.GetAttribute("DICOM.instanceUIDs").split()[0]
+                    item = shNode.GetItemByDataNode(node)
+                    while item:
+                        if not d_uid and shNode.GetItemAttribute(item, "DICOM.instanceUIDs"):
+                            d_uid = shNode.GetItemAttribute(item, "DICOM.instanceUIDs").split()[0]
+                        if not s_uid and shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID"):
+                            s_uid = shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID")
+                        if d_uid and s_uid: break
+                        item = shNode.GetItemParent(item)
+                    return d_uid, s_uid
+
+                dose_uid, study_uid = find_attributes(template_node)
+
+                # Rescate desde el nodo original si el actual es remuestreado
+                if not dose_uid and not study_uid:
+                    base_name = template_node.GetName().replace("_Resampled", "").split(": ")[-1]
+                    for v_node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+                        if v_node == template_node: continue
+                        if base_name in v_node.GetName():
+                            dose_uid, study_uid = find_attributes(v_node)
+                            if dose_uid or study_uid: break
+
+                # Estrategia 1: UID Directo
+                if dose_uid:
+                    candidate = db.fileForInstance(dose_uid)
+                    if candidate and os.path.exists(candidate):
+                        if pydicom.dcmread(candidate, stop_before_pixels=True).Modality == "RTDOSE":
+                            original_file_path = candidate
+
+                # Estrategia 2: Detective de Nombres
+                if not original_file_path and study_uid and db.isOpen:
+                    clean_name = template_node.GetName().replace("_Resampled", "").split(": ")[-1].lower().strip()
+                    for series in db.seriesForStudy(study_uid):
+                        instances = db.instancesForSeries(series)
+                        if not instances: continue
+                        path = db.fileForInstance(instances[0])
+                        if path and os.path.exists(path):
+                            try:
+                                ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                if ds_temp.Modality == "RTDOSE" and (
+                                        clean_name in str(getattr(ds_temp, 'SeriesDescription', '')).lower()):
+                                    original_file_path = path
+                                    break
+                            except:
+                                pass
 
             # ==========================================================
-            # 4. PLAN B: Selección Manual del RTDOSE
+            # 4. PLAN B: Selección Manual del RTDOSE (Red de seguridad)
             # ==========================================================
             if not original_file_path:
                 msg = ("Slicer lost the DICOM metadata of the original dose.\n\n"
@@ -1631,7 +1679,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ds.PixelData = scaled_array.tobytes()
 
             # ==========================================================
-            # 6. LOCALIZAR EL RTPLAN ORIGINAL (para clonarlo)
+            # 6. LOCALIZAR EL RTPLAN ORIGINAL (con Ninja Fallback)
             # ==========================================================
             if 'ReferencedRTPlanSequence' not in ds or len(ds.ReferencedRTPlanSequence) == 0:
                 slicer.util.errorDisplay("The template RTDOSE has no Referenced RT Plan. Cannot build a shadow plan.")
@@ -1639,8 +1687,23 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             plan_ref_item = ds.ReferencedRTPlanSequence[0]
             original_plan_uid = plan_ref_item.ReferencedSOPInstanceUID
+            original_plan_path = db.fileForInstance(original_plan_uid)
 
-            original_plan_path = slicer.dicomDatabase.fileForInstance(original_plan_uid)
+            # Ninja Fallback para RTPLAN si Slicer perdió el track directo
+            if (not original_plan_path or not os.path.exists(original_plan_path)) and study_uid and db.isOpen:
+                for series in db.seriesForStudy(study_uid):
+                    instances = db.instancesForSeries(series)
+                    if instances:
+                        path = db.fileForInstance(instances[0])
+                        if path and os.path.exists(path):
+                            try:
+                                ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                if ds_temp.Modality == "RTPLAN" and ds_temp.SOPInstanceUID == original_plan_uid:
+                                    original_plan_path = path
+                                    break
+                            except:
+                                pass
+
             if not original_plan_path or not os.path.exists(original_plan_path):
                 slicer.util.warningDisplay(
                     "Could not automatically locate the original RTPLAN.\n\n"
@@ -1652,29 +1715,38 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     slicer.util.errorDisplay("Export cancelled. A valid RTPLAN is required to build the shadow plan.")
                     return
 
-            plan_temp_ds = pydicom.dcmread(original_plan_path, stop_before_pixels=True)
-            if plan_temp_ds.Modality != "RTPLAN":
-                slicer.util.errorDisplay(
-                    f"The selected file is a {plan_temp_ds.Modality}, not an RTPLAN. Export cancelled.")
+            plan_full_ds = pydicom.dcmread(original_plan_path, stop_before_pixels=True)
+            if plan_full_ds.Modality != "RTPLAN":
+                slicer.util.errorDisplay(f"The selected file is a {plan_full_ds.Modality}, not an RTPLAN.")
                 return
 
             slicer.util.showStatusMessage("Building shadow RTPLAN...")
             slicer.app.processEvents()
 
             # ==========================================================
-            # 6b. LOCALIZAR Y COPIAR EL STRUCTURE SET ORIGINAL (sin modificar)
-            #     Eclipse exige que Imagen + Structure Set + Plan + Dosis
-            #     estén presentes en la misma importación.
+            # 6b. LOCALIZAR EL STRUCTURE SET ORIGINAL (con Ninja Fallback)
             # ==========================================================
             import shutil
-
             rtstruct_path = None
-            plan_full_ds = pydicom.dcmread(original_plan_path, stop_before_pixels=True)
-
             if hasattr(plan_full_ds, 'ReferencedStructureSetSequence') and len(
                     plan_full_ds.ReferencedStructureSetSequence) > 0:
                 rtstruct_uid = plan_full_ds.ReferencedStructureSetSequence[0].ReferencedSOPInstanceUID
-                rtstruct_path = slicer.dicomDatabase.fileForInstance(rtstruct_uid)
+                rtstruct_path = db.fileForInstance(rtstruct_uid)
+
+                # Ninja Fallback para RTSTRUCT
+                if (not rtstruct_path or not os.path.exists(rtstruct_path)) and study_uid and db.isOpen:
+                    for series in db.seriesForStudy(study_uid):
+                        instances = db.instancesForSeries(series)
+                        if instances:
+                            path = db.fileForInstance(instances[0])
+                            if path and os.path.exists(path):
+                                try:
+                                    ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                    if ds_temp.Modality == "RTSTRUCT" and ds_temp.SOPInstanceUID == rtstruct_uid:
+                                        rtstruct_path = path
+                                        break
+                                except:
+                                    pass
 
             if not rtstruct_path or not os.path.exists(rtstruct_path):
                 slicer.util.warningDisplay(
@@ -1685,12 +1757,11 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 rtstruct_path = qt.QFileDialog.getOpenFileName(
                     None, "Select the ORIGINAL RTSTRUCT (.dcm) file", "", "DICOM Files (*.dcm);;All Files (*)")
                 if not rtstruct_path or not os.path.exists(rtstruct_path):
-                    slicer.util.errorDisplay("Export cancelled. The RTSTRUCT is required by Eclipse to link the dose.")
+                    slicer.util.errorDisplay("Export cancelled. The RTSTRUCT is required by Eclipse.")
                     return
                 temp_struct_ds = pydicom.dcmread(rtstruct_path, stop_before_pixels=True)
                 if temp_struct_ds.Modality != "RTSTRUCT":
-                    slicer.util.errorDisplay(
-                        f"The selected file is a {temp_struct_ds.Modality}, not an RTSTRUCT. Export cancelled.")
+                    slicer.util.errorDisplay(f"The selected file is a {temp_struct_ds.Modality}, not an RTSTRUCT.")
                     return
 
             rtstruct_filename = f"RTSTRUCT_original_{os.path.basename(rtstruct_path)}"
@@ -1698,9 +1769,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             shutil.copy2(rtstruct_path, rtstruct_dest)
 
             # ==========================================================
-            # 7. CREAR EL "PLAN SOMBRA": copia del RTPLAN con UIDs nuevos
-            #    Esto evita "Plan has dose already calculated" porque, para
-            #    Eclipse, es un plan nuevo sin ninguna dosis asociada aún.
+            # 7. CREAR EL "PLAN SOMBRA"
             # ==========================================================
             plan_ds = pydicom.dcmread(original_plan_path)
 
@@ -1709,8 +1778,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             plan_ds.SeriesInstanceUID = new_plan_series_uid
             plan_ds.SOPInstanceUID = new_plan_sop_uid
 
-            # Limpiar referencias a dosis ya calculadas sobre el plan original
-            # (si no se limpian, el plan sombra "hereda" el vínculo con la dosis vieja)
             if hasattr(plan_ds, 'FractionGroupSequence'):
                 for fg in plan_ds.FractionGroupSequence:
                     if 'ReferencedDoseSequence' in fg:
@@ -1718,7 +1785,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if 'ReferencedDoseSequence' in plan_ds:
                 del plan_ds.ReferencedDoseSequence
 
-            # Evitar que el plan sombra se confunda con el plan clínico aprobado
             if hasattr(plan_ds, 'ApprovalStatus'):
                 plan_ds.ApprovalStatus = "UNAPPROVED"
 
@@ -1735,17 +1801,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             pydicom.dcmwrite(plan_save_path, plan_ds)
 
             # ==========================================================
-            # 8. MUTACIÓN CLÍNICA: aislar el RTDOSE, pero enlazado al plan sombra
+            # 8. MUTACIÓN CLÍNICA: Aislar el RTDOSE
             # ==========================================================
             ds.SeriesInstanceUID = generate_uid()
             ds.SOPInstanceUID = generate_uid()
             ds.SeriesDescription = "RadReirradiation_EQD2_Sum"
 
-            # Repuntar (NO borrar) la referencia al plan: ahora apunta al plan sombra
             plan_ref_item.ReferencedSOPClassUID = plan_ds.SOPClassUID
             plan_ref_item.ReferencedSOPInstanceUID = new_plan_sop_uid
-
-            # Eclipse solo acepta PLAN, FRACTION o BEAM -> nos aseguramos de mantener PLAN
             ds.DoseSummationType = "PLAN"
 
             if hasattr(ds, 'SeriesNumber'):
@@ -1775,8 +1838,165 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
 
         except Exception as e:
-            slicer.util.errorDisplay(f"Export Error: {str(e)}")
-            print(f"Detailed Error: {str(e)}")
+            import traceback
+            slicer.util.errorDisplay(f"An error occurred during export:\n{str(e)}")
+            traceback.print_exc()
+
+    def attemptSilentFractionExtraction(self, dose_node, spinbox):
+        """Busca silenciosamente el RTPLAN usando UIDs, o como último recurso, coincidencia de nombres en la BD."""
+        if not dose_node:
+            return
+
+        try:
+            import slicer
+            import pydicom
+            import os
+
+            shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            db = slicer.dicomDatabase
+
+            # =========================================================================
+            # 1. RASTREADOR DE ATRIBUTOS (Busca UID de Dosis o UID de Estudio)
+            # =========================================================================
+            dose_uid = None
+            study_uid = None
+
+            def find_attributes_in_hierarchy(node):
+                d_uid, s_uid = None, None
+                if node.GetAttribute("DICOM.instanceUIDs"):
+                    d_uid = node.GetAttribute("DICOM.instanceUIDs").split()[0]
+
+                item = shNode.GetItemByDataNode(node)
+                while item:
+                    if not d_uid and shNode.GetItemAttribute(item, "DICOM.instanceUIDs"):
+                        d_uid = shNode.GetItemAttribute(item, "DICOM.instanceUIDs").split()[0]
+                    if not s_uid and shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID"):
+                        s_uid = shNode.GetItemAttribute(item, "DICOM.StudyInstanceUID")
+                    if d_uid and s_uid: break
+                    item = shNode.GetItemParent(item)
+                return d_uid, s_uid
+
+            dose_uid, study_uid = find_attributes_in_hierarchy(dose_node)
+
+            if not dose_uid and not study_uid:
+                base_name = dose_node.GetName().replace("_Resampled", "").split(": ")[-1]
+                for v_node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+                    if v_node == dose_node: continue
+                    if base_name in v_node.GetName():
+                        dose_uid, study_uid = find_attributes_in_hierarchy(v_node)
+                        if dose_uid or study_uid: break
+
+            target_plan_path = None
+            plan_ref_item = None
+
+            # =========================================================================
+            # ESTRATEGIA A: Match Perfecto (UID Directo)
+            # =========================================================================
+            if dose_uid:
+                dose_path = db.fileForInstance(dose_uid)
+                if dose_path and os.path.exists(dose_path):
+                    ds_dose = pydicom.dcmread(dose_path, stop_before_pixels=True)
+                    if hasattr(ds_dose, 'ReferencedRTPlanSequence') and len(ds_dose.ReferencedRTPlanSequence) > 0:
+                        plan_ref_item = ds_dose.ReferencedRTPlanSequence[0]
+                        target_plan_path = db.fileForInstance(plan_ref_item.ReferencedSOPInstanceUID)
+
+            # =========================================================================
+            # ESTRATEGIA B: Match Familiar (Study UID)
+            # =========================================================================
+            if not target_plan_path and study_uid:
+                for s in db.seriesForStudy(study_uid):
+                    instances = db.instancesForSeries(s)
+                    if instances:
+                        temp_path = db.fileForInstance(instances[0])
+                        if temp_path and os.path.exists(temp_path):
+                            if pydicom.dcmread(temp_path, stop_before_pixels=True).Modality == "RTPLAN":
+                                target_plan_path = temp_path
+                                break
+
+            # =========================================================================
+            # ESTRATEGIA C: El Detective de Nombres (Búsqueda Ciega en DB)
+            # =========================================================================
+            if not target_plan_path and db.isOpen:
+                print(f"DEBUG Ninja: Iniciando búsqueda ciega por nombre para '{dose_node.GetName()}'...")
+                # Limpiar el nombre (ej. quitar "36: " y "_Resampled")
+                clean_name = dose_node.GetName().replace("_Resampled", "")
+                clean_name = clean_name.split(": ")[-1].lower().strip()
+
+                found_study_uid = None
+
+                # 1. Buscar a qué estudio pertenece basándose en el nombre de la Serie de la Dosis
+                for patient in db.patients():
+                    for study in db.studiesForPatient(patient):
+                        for series in db.seriesForStudy(study):
+                            instances = db.instancesForSeries(series)
+                            if not instances: continue
+                            path = db.fileForInstance(instances[0])
+                            if path and os.path.exists(path):
+                                try:
+                                    ds_temp = pydicom.dcmread(path, stop_before_pixels=True)
+                                    if ds_temp.Modality == "RTDOSE":
+                                        series_desc = str(getattr(ds_temp, 'SeriesDescription', '')).lower()
+                                        if clean_name in series_desc or series_desc in clean_name:
+                                            found_study_uid = study
+                                            print(
+                                                f"DEBUG Ninja: Coincidencia de nombre! Dosis pertenece al estudio: {study}")
+                                            break
+                                except:
+                                    pass
+                        if found_study_uid: break
+                    if found_study_uid: break
+
+                # 2. Si encontramos el estudio, atrapar su RTPLAN
+                if found_study_uid:
+                    for series in db.seriesForStudy(found_study_uid):
+                        instances = db.instancesForSeries(series)
+                        if not instances: continue
+                        path = db.fileForInstance(instances[0])
+                        if path and os.path.exists(path):
+                            try:
+                                if pydicom.dcmread(path, stop_before_pixels=True).Modality == "RTPLAN":
+                                    target_plan_path = path
+                                    print(f"DEBUG Ninja: Plan recuperado mediante Estrategia C -> {path}")
+                                    break
+                            except:
+                                pass
+
+            # =========================================================================
+            # EXTRACCIÓN DE FRACCIONES
+            # =========================================================================
+            if not target_plan_path or not os.path.exists(target_plan_path):
+                print(
+                    f"DEBUG Ninja: Todas las estrategias fallaron. Slicer desconectó totalmente '{dose_node.GetName()}'.")
+                return
+
+            ds_plan = pydicom.dcmread(target_plan_path, stop_before_pixels=True)
+            if not hasattr(ds_plan, 'FractionGroupSequence') or len(ds_plan.FractionGroupSequence) == 0:
+                return
+
+            referenced_fg_numbers = None
+            if plan_ref_item and hasattr(plan_ref_item, 'ReferencedFractionGroupSequence'):
+                referenced_fg_numbers = {
+                    int(fg.ReferencedFractionGroupNumber)
+                    for fg in plan_ref_item.ReferencedFractionGroupSequence
+                }
+
+            if referenced_fg_numbers:
+                relevant_fgs = [fg for fg in ds_plan.FractionGroupSequence
+                                if int(getattr(fg, 'FractionGroupNumber', -1)) in referenced_fg_numbers]
+            else:
+                relevant_fgs = list(ds_plan.FractionGroupSequence)
+
+            total_fractions = sum(
+                int(fg.NumberOfFractionsPlanned) for fg in relevant_fgs
+                if hasattr(fg, 'NumberOfFractionsPlanned')
+            )
+
+            if total_fractions > 0:
+                spinbox.setValue(total_fractions)
+                print(f"ÉXITO Ninja: {total_fractions} fracciones inyectadas para '{dose_node.GetName()}'.")
+
+        except Exception as e:
+            pass  # Silencio absoluto ante errores
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
