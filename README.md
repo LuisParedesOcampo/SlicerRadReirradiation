@@ -157,17 +157,18 @@ Launching the Module:
 * Open the module dropdown menu (usually displaying "Welcome to Slicer").
 * Navigate to Radiotherapy and select RadReirradiation.
 
-<img width="1170" height="981" alt="8" src="https://github.com/user-attachments/assets/d06ce3f6-5496-48ed-8806-f3d7d5e557d9" />
+<img width="892" height="792" alt="Launch radreirradiation" src="https://github.com/user-attachments/assets/ec05b60a-cbfc-47c1-ac00-4a78673e0f7f" />
+
 
 
 **RadReirradiation**  has 4 important modules, which are:
 
-1. Data selection and image registration with Dose resample.
+1. Load Reirradiation data and image registration with Dose resample.
 2. Structures visualization and Biolgical Role (important for the DVH analysis).
 3. Reirradiation calculation settings.
 4. Metrics an DVH results.
      
-<img width="1221" height="907" alt="10" src="https://github.com/user-attachments/assets/66350799-ce81-48d3-8620-94167a546602" />
+<img width="522" height="492" alt="modulos" src="https://github.com/user-attachments/assets/11b8481e-085e-4deb-89d7-4a32fb99f6c7" />
 
 
 **Assigning Volumes:**
@@ -175,10 +176,13 @@ Launching the Module:
 In the Data Selection panel, carefully assign your loaded volumes to their corresponding roles:
 * Moving CT / Previous CT: The historical anatomy that needs to be registered.
 * RTDOSE Previous treatment.
+* RTSTRUCT : Structures from the previous treatment
 * Fixed CT / Current /planned CT: The anatomy where the final dose summation will be evaluated.
 * RTDOSE Current/planned Treatment.
+* RTSTRUCT : Structures from the current treatment
 
-<img width="523" height="249" alt="9" src="https://github.com/user-attachments/assets/3bc186c4-953e-4961-8806-9d16133841b0" />
+<img width="502" height="253" alt="ASIGNACION" src="https://github.com/user-attachments/assets/49747c39-dea2-4050-9cce-5fad4eee3d02" />
+
 
 **Pre-Alignment and Image Registration with Dose resample:**
 
