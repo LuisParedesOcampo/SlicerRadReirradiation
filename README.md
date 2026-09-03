@@ -265,6 +265,7 @@ Click the Calculate Cumulative EQD2 Dose button.
 
 <img width="1911" height="928" alt="calculating EQD2 2" src="https://github.com/user-attachments/assets/6f2e51f0-cfe1-4fe4-a4f3-c6b7110a1138" />
 
+<img width="1911" height="925" alt="calculating EQD2 FINAL" src="https://github.com/user-attachments/assets/610fa803-4211-444e-aab0-52f3f51ff079" />
 
 **4 Visualizing the Results and DVH Analytics:**
 
