@@ -187,27 +187,56 @@ In the Data Selection panel, carefully assign your loaded volumes to their corre
 **Pre-Alignment and Image Registration with Dose resample:**
 
 Before computing any biological dose, both CTs must be spatially aligned. Click the "Auto-Center CTs" button. This will automatically match the mathematical centers of both image sets, providing an excellent starting point.
-At this point, it is recommended to hide the structures to better visualize the Pre-Aligment and image Registration results. To do this, use module 2 (Structures visualization), select the RS CURRENT file, and press the "Hide all structures" button.
+At this point, if all the structres are visible it is recommended to hide the structures to better visualize the Pre-Aligment and image Registration results. To do this, use module 2 (Structures visualization), select the RS CURRENT file, and press the "Hide all structures" button.
 
-<img width="1920" height="1007" alt="11" src="https://github.com/user-attachments/assets/a1a32f96-e860-47de-9c8b-e2b062f028e5" />
+<img width="1797" height="918" alt="Autecenter2" src="https://github.com/user-attachments/assets/de742b8b-8095-44eb-a648-d5f61388c0ad" />
 
-Use the manual sliders to fine-tune the alignment if the patient setups were significantly different, this will be the starting point for the image registration and Dose resample algorithm.
+💡 Clinical Tip: To better guide your alignment, use Module 2 (Structures Visualization) to turn on the visibility of the current PTV or target volume. This provides a clear visual anchor, helping you focus the registration on the most critical clinical area.
 
-<img width="1770" height="890" alt="12" src="https://github.com/user-attachments/assets/d36b17ae-6067-4cf9-8669-29d6164cf2a7" />
+<img width="1871" height="910" alt="prealigment2" src="https://github.com/user-attachments/assets/958d82dc-4938-4b37-9ac0-9a8a7d6e37a9" />
 
- **Registration Options & Processing Time:**
+Use the translational sliders (Right/Left, Ant/Post, Sup/Inf) to manually fine-tune the alignment. Once the initial pre-alignment is set, you have two paths to finalize the registration:
 
- Press the button Auto-Registration and Dose resample, this uses the built-in BRAINSFit integration to lock the previous CT and its dose onto the current anatomy. the module includes two checkeable options for improve image registration results:
- 
-* Affine Registration: Performs a linear transformation (translation, rotation, scaling, and shearing).
-* Deformable Registration: Performs a non-linear transformation (BSpline) that adapts to anatomical changes between the two scans, such as weight loss or tumor shrinkage.
-* ⚠️ Warning: Please note that checking those options, especially the Deformable option, is computationally intensive. It may take several minutes to complete depending on your computer's hardware specifications.
+**Path A: Auto-Registration (Recommended)**
+Let the built-in BRAINSFit engine lock the previous CT onto the current anatomy. The module includes two checkable options to improve the algorithmic results:
+
+**Enable Affine Transform:** Performs a linear transformation (translation, rotation, scaling, and shearing).
+
+**Enable Deformable (B-Spline) Registration:** Performs a non-linear transformation that adapts to anatomical changes between the two scans (e.g., weight loss or tumor shrinkage).
+      
+* ⚠️ Warning: Please note that checking those options (Affine/Deformable), is computationally intensive. It may take several minutes to complete depending on your computer's hardware specifications, if you want a quick registration, do not click either of the two options.
+
+**Path B: Advanced Manual Registration (6-DOF)**
+If the automatic registration algorithms do not yield favorable results, or if you prefer full control over the fusion, you can perform a purely manual registration. Check the Use Manual Alignment Only (Disable Auto-Registration) box. Check Advanced: Enable Rotation to unlock the Pitch, Roll, and Yaw sliders. Manually align the images using the full 6 Degrees of Freedom (6-DOF).
+
+<img width="1914" height="925" alt="performing registration2" src="https://github.com/user-attachments/assets/cf352de7-0767-4ddb-8f9f-14f30369fa89" />
+
+⚠️ CRITICAL STEP: Whether you choose Path A or Path B, you must click the final action button at the bottom of the panel (Auto Registration and Dose Resample OR Apply Manual Alignment / Resample Dose). This step is mandatory. It not only locks the image fusion but also mathematically resamples the previous RTDOSE grid to match the current patient geometry, preventing matrix dimension errors during the biological summation.
 
 **Visualizing the Fusion Results:**
 
 After the registration is complete, it is highly recommended to perform a visual Quality Assurance (QA). Use Slicer's native foreground/background fade sliders (located at the top of the 2D slice views) to blend the Previous CT and Current CT. This visual check ensures the accuracy of the alignment before proceeding to the dose calculation.
 
-<img width="1846" height="889" alt="13" src="https://github.com/user-attachments/assets/15ca65fe-f9af-4316-ae5f-793881cdfea1" />
+<img width="1886" height="873" alt="registration succesfull" src="https://github.com/user-attachments/assets/efbce12f-1568-4fa5-a7a7-97b9d5ff63ac" />
+
+
+**Structure Selection and Biological Role Assignment**
+
+Once the image registration and dose resampling are complete, it is time to define the specific structures you want to evaluate for the re-irradiation summation.
+Visualizing the Target Structures:
+Navigate to Module 2 (Structures Visualization). You can choose to use either the Previous or the Current Structure Set (RTSTRUCT) from the dropdown menu. Expand the list and toggle the "eye" icon (visibility) ON only for the specific structures you wish to include in the dosimetric analysis (e.g., PTVs and critical OARs). The algorithm will solely process the structures that are visible in the scene.
+
+<img width="1910" height="936" alt="biological role2" src="https://github.com/user-attachments/assets/c84ab529-6ec4-477d-8a0c-fd54de6e7c99" />
+
+Configuring the Biological Roles:
+After making your target structures visible, proceed to Panel 2.1 (Biological Configuration) and click the Generate / Update Biological Roles Table button. The module will automatically populate the table exclusively with your visible structures.
+
+For each structure in the table, you must define two critical dosimetric parameters:
+
+Role (Tumor vs. OAR): Assign whether the structure is a Target (Tumor) or an Organ At Risk (OAR). This dictates which specific Alpha/Beta (α/β) ratio the algorithm will apply to that volume during the voxel-by-voxel EQD2/BED conversion.
+
+Overlap Priority: In clinical scenarios where a Target volume and an OAR overlap, you must dictate how those intersecting voxels are mathematically treated. You can choose whether the intersection behaves strictly as an OAR (conservative approach, prioritizing healthy tissue constraints) or as a Tumor (prioritizing target dose accumulation).
+
 
 **3. Reirradiation Caulculation settings**
 
