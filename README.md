@@ -187,7 +187,7 @@ In the Data Selection panel, carefully assign your loaded volumes to their corre
 **Pre-Alignment and Image Registration with Dose resample:**
 
 Before computing any biological dose, both CTs must be spatially aligned. Click the "Auto-Center CTs" button. This will automatically match the mathematical centers of both image sets, providing an excellent starting point.
-At this point, if all the structres are visible it is recommended to hide the structures to better visualize the Pre-Aligment and image Registration results. To do this, use module 2 (Structures visualization), select the RS CURRENT file, and press the "Hide all structures" button.
+At this point, if all the structres are visible it is recommended to hide the structures to better visualize the Pre-Aligment and image Registration results. To do this, use module 2 (Structures visualization), and press the "Hide all structures" button.
 
 <img width="1797" height="918" alt="Autecenter2" src="https://github.com/user-attachments/assets/de742b8b-8095-44eb-a648-d5f61388c0ad" />
 
