@@ -268,28 +268,28 @@ Click the Calculate Cumulative EQD2 Dose button.
 
 **4 Visualizing the Results and DVH Analytics:**
 
-Once the calculation is complete, the extension generates a new biologically equivalent dose volume (EQD2).  Eclipse-Style Dose Wash: Slicer will automatically apply a dynamic color heatmap (with a Scalar Bar) to the generated dose.
-<img width="1902" height="886" alt="16" src="https://github.com/user-attachments/assets/74ab0f5a-f78b-4986-93f9-e0b3b2560bb5" />
+Once the cumulative EQD2 dose is calculated, you can instantly extract the dosimetric data for the structures you previously selected in the Biological Roles table.
 
-**Structure Visualization (The "Eye" Icon):**
+**Configurable DMax and Metrics Table:**
 
-To actually see your contours overlaid on the CT and the dose wash, navigate to the RadReirradiation module 2 (Structure visualization). use the current Structure Set (e.g. RS CURRENT) , expand the list, and toggle the "eye" icon next to each specific structure (e.g., Spinal Cord, Brainstem, PTV) you wish to display in the 2D and 3D views.
+<img width="1917" height="931" alt="DVH Y METRICAS" src="https://github.com/user-attachments/assets/c905dfb5-65a7-47f4-a2db-b22e41edc4f3" />
 
-<img width="1901" height="884" alt="17" src="https://github.com/user-attachments/assets/07cec322-7b62-4406-b703-9c8fc56ab1db" />
+Adjustable DMax Volume Constraint: Before calculating the metrics, you can specify the exact volume used to evaluate the Maximum Dose (DMax). Depending on your clinical protocol or the specific organ evaluated (e.g., spinal cord vs. bowel), you can select a true point dose (0 cc), a near-maximum dose (0.03 cc), or larger volumetric constraints (1 cc, 2 cc, up to 5 cc). Calculate Metrics: Click the calculate button to generate a detailed table displaying the Cumulative DMax and Cumulative Mean Dose (DMean) exclusively for the structures actively participating in your biological analysis.
 
-**EQD2 Metrics table and DVH:**
+**Dose-Volume Histogram (DVH) Generation:**
+<img width="1918" height="932" alt="SOLO DVH" src="https://github.com/user-attachments/assets/3917eca8-0440-4db5-9959-956feaee0fa3" />
 
-The module automatically generates a comprehensive metrics table and DVH based on your visualization settings. Important: This table and DVH evaluates only the structures that are currently visible (those with the "eye" icon left open). For these selected structures, the algorithm calculates and displays the Maximum Dose (DMax) and Mean Dose (DMean) of the accumulated EQD2 and generate the Dose-Volume Histogram (DVH) plot for the accumulated EQD2 dose (based on your selected α/β ratio), allowing you to quickly verify clinical safety constraints.
-
-<img width="1915" height="879" alt="18" src="https://github.com/user-attachments/assets/b8e51900-a4de-4a1a-988d-ca7fe77b7299" />
-<img width="1916" height="881" alt="25" src="https://github.com/user-attachments/assets/8c90bd28-3443-458d-85bf-2af904794046" />
+To visually analyze the dose distribution, click the Generate DVH button. The module will plot interactive DVH curves for the accumulated EQD2 dose.
+Absolute vs. Relative Volume Toggle: You can easily switch the DVH Y-axis between Relative Volume (%) and Absolute Volume (cc). The algorithm extracts precise voxel spacing dimensions directly from the DICOM metadata, ensuring highly accurate volumetric rendering for your clinical constraints.
 
 
+**5 Exporting Data and Clinical Reporting**
 
+Once your metrics and DVH are generated and clinically validated, you can securely export the accumulated dose and analysis for your medical records and Treatment Planning System (TPS).
 
+**Export EQD2 to DICOM:** Click the green button to package the accumulated EQD2 dose for direct import into your TPS (e.g., Varian Eclipse, Monaco). The module utilizes "Silent DICOM Tracking" to trace original metadata, generates a compatible "shadow" RTPLAN, and bundles the active RTSTRUCT. This ensures seamless import compatibility and bypasses standard TPS dose-lock restrictions.
 
-
-
+**Export Clinical Report (PDF):** Click the red button to generate a native, print-ready PDF document. This feature automatically traverses the DICOM hierarchy to extract patient metadata (Name, ID) and compiles a comprehensive document logging all registration parameters, biological roles, tissue recovery settings, and the final dosimetric metrics (DMax, DMean) for your legal and medical traceability.
 
 
 ## Disclaimer ⚠️
