@@ -240,25 +240,31 @@ Overlap Priority: In clinical scenarios where a Target volume and an OAR overlap
 
 **3. Reirradiation Caulculation settings**
 
-With the CT images already registered, the extension streamlines your workflow. Thanks to the image registration algorithm, the newly registered and mapped to the current anatomy: Previous RT Dose (RD PREVIOUS_Registered) is automatically loaded in the module, saving you manual steps and reducing setup errors.
+With the CT images already registered, the extension streamlines your workflow. Thanks to the image registration algorithm, the newly registered and mapped Previous RT Dose (RD PREVIOUS_Resampled) is automatically loaded in the module, saving you manual steps and reducing setup errors.
 
-<img width="522" height="260" alt="14" src="https://github.com/user-attachments/assets/14cf11d0-463d-4570-bf56-0927a8b9b411" />
+<img width="1814" height="925" alt="Reirradiation settings2" src="https://github.com/user-attachments/assets/3657c90e-b8ce-4fd7-ace2-676fd89fc131" />
+
 
 **Reirradiation Settings:**
 
-* Adjust the Alpha/Beta (α/β) ratios according to the specific tissue or tumor being evaluated.
-     * ⚠️ Important Clinical Note: Currently, the module performs the biological summation using a single global alpha/beta ratio per calculation. If you want to evaluate late effects on Organs at Risk (OARs), set the ratio to e.g. 3 and calculate. To evaluate tumor control, you will need to change the ratio to e.g. 10 and run a new calculation, is not necessary to perform the image registration and all the previous steps, just change the alpha/beta and click the Calculate button. (Note: A future update is currently in development to allow structure-specific alpha/beta assignments).
-* Enter the number of fractions for the previous and current treatment.
-* Time-Discount Factor (Partial Recovery): If you consider it necessary to apply a dose discount factor, you can enable the "Time Discount" option. This feature accounts for the partial biological recovery of healthy tissues over time. Based on the selected elapsed time, the module applies a specific dose reduction factor to the previous treatment before the final summation: (Note: These factors are based on Nieder C, Grosu AL, Andratschke NH, Molls M. Update of human spinal cord reirradiation tolerance based on additional data from 38 patients [https://pubmed.ncbi.nlm.nih.gov/17084560/] and provide a more realistic biological estimation).
+Fractions: Enter the number of delivered fractions for the previous treatment (RT1) and the planned fractions for the current treatment (RT2). (Note: If your RTDOSE was loaded with its corresponding RTPLAN, the module's DICOM tracker will automatically detect and populate these values for you).
 
-     * 0 to 6 months: No recovery assumed. 0% discount is applied (100% of the previous dose is considered).
-     * 6 to 12 months: Partial recovery assumed. A 25%  discount factor is applied. (75 % of the previous dose is considered).
-     * 12 to 24 months: Advanced recovery assumed. A 50% discount factor is applied. (50 % of the previous dose is considered).
-     * 24 to X months: Prolonged recovery assumed. A 65 % discount factor is applied. (35 % of the previous dose is considered).
-     
-* Click the "Calculate Cumulative EQD2 Dose" button.
+Dual Alpha/Beta (α/β) Ratios: The module now supports simultaneous dual biological summations. Enter both the α/β Ratio (OARs) (e.g., 3.0 Gy) and the α/β Ratio (Tumor) (e.g., 10.0 Gy). The algorithm evaluates each voxel and applies the correct ratio perfectly respecting the Roles and Overlap Priorities defined in your Biological Configuration table. You no longer need to run separate calculations for targets and healthy tissues.
 
-<img width="522" height="260" alt="15" src="https://github.com/user-attachments/assets/2f5e7027-0e84-4a60-a4e1-c1b0cff8c820" />
+Time-Discount Factor (Partial Recovery): If you consider it necessary to apply a dose discount factor, enable the "Time-based Recovery" option. This feature accounts for the partial biological recovery of healthy tissues over time. Based on the selected elapsed time interval, the module applies a specific dose reduction factor to the previous treatment before the final summation (Note: These factors are based on Nieder C, et al. Update of human spinal cord reirradiation tolerance based on additional data from 38 patients [PubMed] and provide a realistic biological estimation):
+
+0 to 6 months: No recovery assumed. 0% discount is applied (100% of the previous dose is considered).
+
+6 to 12 months: Partial recovery assumed. A 25% discount factor is applied (75% of the previous dose is considered).
+
+12 to 24 months: Advanced recovery assumed. A 50% discount factor is applied (50% of the previous dose is considered).
+
+> 24 months: Prolonged recovery assumed. A 65% discount factor is applied (35% of the previous dose is considered).
+
+Click the Calculate Cumulative EQD2 Dose button.
+
+<img width="1911" height="928" alt="calculating EQD2 2" src="https://github.com/user-attachments/assets/6f2e51f0-cfe1-4fe4-a4f3-c6b7110a1138" />
+
 
 **4 Visualizing the Results and DVH Analytics:**
 
