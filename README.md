@@ -247,11 +247,11 @@ With the CT images already registered, the extension streamlines your workflow. 
 
 **Reirradiation Settings:**
 
-Fractions: Enter the number of delivered fractions for the previous treatment (RT1) and the planned fractions for the current treatment (RT2). (Note: If your RTDOSE was loaded with its corresponding RTPLAN, the module's DICOM tracker will automatically detect and populate these values for you).
+**Fractions:** Enter the number of delivered fractions for the previous treatment (RT1) and the planned fractions for the current treatment (RT2). (Note: If your RTDOSE was loaded with its corresponding RTPLAN, the module's DICOM tracker will automatically detect and populate these values for you).
 
-Dual Alpha/Beta (α/β) Ratios: The module now supports simultaneous dual biological summations. Enter both the α/β Ratio (OARs) (e.g., 3.0 Gy) and the α/β Ratio (Tumor) (e.g., 10.0 Gy). The algorithm evaluates each voxel and applies the correct ratio perfectly respecting the Roles and Overlap Priorities defined in your Biological Configuration table. You no longer need to run separate calculations for targets and healthy tissues.
+**Dual Alpha/Beta (α/β) Ratios:** The module now supports simultaneous dual biological summations. Enter both the α/β Ratio (OARs) (e.g., 3.0 Gy) and the α/β Ratio (Tumor) (e.g., 10.0 Gy). The algorithm evaluates each voxel and applies the correct ratio perfectly respecting the Roles and Overlap Priorities defined in your Biological Configuration table. You no longer need to run separate calculations for targets and healthy tissues.
 
-Time-Discount Factor (Partial Recovery): If you consider it necessary to apply a dose discount factor, enable the "Time-based Recovery" option. This feature accounts for the partial biological recovery of healthy tissues over time. Based on the selected elapsed time interval, the module applies a specific dose reduction factor to the previous treatment before the final summation (Note: These factors are based on Nieder C, et al. Update of human spinal cord reirradiation tolerance based on additional data from 38 patients [PubMed] and provide a realistic biological estimation):
+**Time-Discount Factor (Partial Recovery):** If you consider it necessary to apply a dose discount factor, enable the "Time-based Recovery" option. This feature accounts for the partial biological recovery of healthy tissues over time. Based on the selected elapsed time interval, the module applies a specific dose reduction factor to the previous treatment before the final summation (Note: These factors are based on *Nieder C, et al. Update of human spinal cord reirradiation tolerance based on additional data from 38 patients and provide a realistic biological estimation*):
 
 0 to 6 months: No recovery assumed. 0% discount is applied (100% of the previous dose is considered).
 
