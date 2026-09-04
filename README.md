@@ -109,7 +109,7 @@ covering the full reirradiation analysis workflow:
 > α/β = 10 Gy (tumor) without repeating the image 
 > registration — just change the parameter and click Calculate.
 
-## Step-by-step tutorial 🛠️
+## Step-by-step tutorial (v2.0)🛠️
 
 
 **1. Data Preparation: From TPS to 3D Slicer**
