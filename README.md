@@ -60,7 +60,7 @@ recommendations*. [https://doi.org/10.1007/s00066-018-1266-6]
 RadReirradiation is officially available in the 
 3D Slicer Extensions Manager.
 
-1. Open **3D Slicer 5.10** or **Slicer Preview**
+1. Open **3D Slicer 5.12.3** or **Slicer Preview**
 2. Go to **Extensions Manager** (top menu or Edit → 
    Extensions Manager)
 3. Search for: `RadReirradiation`
@@ -92,7 +92,7 @@ directly from this repository:
 > Option 2 is intended for developers and contributors 
 > who want to test new features before an official release.
 
-## 📹 Video Tutorial
+## 📹 Video Tutorial (v1.2)
 
 A complete step-by-step tutorial is available on YouTube, 
 covering the full reirradiation analysis workflow:
