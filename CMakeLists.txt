@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16.3...3.19.1 FATAL_ERROR)
 project(RadReirradiation)
 
 # Meta-informacion de la extension
-set(EXTENSION_HOMEPAGE "https://radcomp.streamlit.app")
+set(EXTENSION_HOMEPAGE "https://github.com/LuisParedesOcampo/SlicerRadReirradiation")
 set(EXTENSION_CATEGORY "Radiotherapy")
 set(EXTENSION_CONTRIBUTORS "Luis Paredes, Clinical Medical Physicist (Cali, Colombia) www.linkedin.com/in/lfparedes1")
 set(EXTENSION_DESCRIPTION "A clinical tool for Reirradiation analysis, EQD2 dose calculation, and integrated DVH metrics.")
