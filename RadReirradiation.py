@@ -17,13 +17,21 @@ class RadReirradiation(ScriptedLoadableModule):
         self.parent.title = "RadReirradiation: Radiotherapy Reirradiation Analysis"
         self.parent.categories = ["Radiotherapy"]
         self.parent.dependencies = []
-        self.parent.contributors = [
-            "Luis Paredes, Clinical Medical Physicist (Cali, Colombia) www.linkedin.com/in/lfparedes1"]
+        self.parent.contributors = ["Luis Paredes (Clinical Medical Physicist, Cali, Colombia)"]
         self.parent.helpText = """
-        This module allows for re-irradiation analysis through EQD2 dose calculation, study alignment, and integrated dosimetric metrics.
-        Visit: https://RadComp.streamlit.app .
-        """
-        self.parent.acknowledgementText = "Developed for the Medical Physics community."
+                <p>This module allows for re-irradiation analysis through 3D-EQD2 dose calculation, study alignment, and integrated dosimetric metrics.</p>
+
+                <p><b>Step-by-step tutorial on GitHub:</b><br>
+                <a href="https://github.com/LuisParedesOcampo/SlicerRadReirradiation">View Documentation & Guide</a></p>
+
+                <p><b>Web Version:</b><br>
+                Visit our online re-irradiation calculator at <a href="https://radcomp.streamlit.app">RadComp.streamlit.app</a>.</p>
+                """
+        self.parent.acknowledgementText = """
+                <p>Developed for the Medical Physics community.</p>
+                <p>If you find this tool useful for your clinical practice or research, let's connect:<br>
+                <a href="https://www.linkedin.com/in/lfparedes1">LinkedIn Profile (Luis Paredes)</a></p>
+                """
 
 
 # ==========================================================
@@ -269,12 +277,24 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         structuresFormLayout.addRow("RT2 Structures: ", self.rtstruct_selector)
 
-        # --- BOTÓN PARA OCULTAR TODAS LAS ESTRUCTURAS ---
-        self.hide_all_button = qt.QPushButton("Hide all Structures")
-        self.hide_all_button.setStyleSheet("background-color: #34495e; color: white; padding: 5px;")
-        structuresFormLayout.addRow(self.hide_all_button)
+        # --- CONTENEDOR HORIZONTAL PARA LOS BOTONES ---
+        visibilityButtonsLayout = qt.QHBoxLayout()
 
-        # Conectar el botón a la función
+        # Botón Mostrar Todo (Verde para acción positiva)
+        self.show_all_button = qt.QPushButton("Show All Structures")
+        self.show_all_button.setStyleSheet("background-color: #27ae60; color: white; padding: 5px;")
+        visibilityButtonsLayout.addWidget(self.show_all_button)
+
+        # Botón Ocultar Todo (Azul oscuro para contraste)
+        self.hide_all_button = qt.QPushButton("Hide All Structures")
+        self.hide_all_button.setStyleSheet("background-color: #34495e; color: white; padding: 5px;")
+        visibilityButtonsLayout.addWidget(self.hide_all_button)
+
+        # Agregar el contenedor horizontal al layout principal
+        structuresFormLayout.addRow(visibilityButtonsLayout)
+
+        # Conectar los botones a sus respectivas funciones
+        self.show_all_button.connect('clicked(bool)', self.onShowAllStructures)
         self.hide_all_button.connect('clicked(bool)', self.onHideAllStructures)
 
         # 2. Inyectar la Tabla Nativa de Segmentos de Slicer
@@ -947,6 +967,11 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         moving_rtstruct = self.moving_rtstruct_selector.currentNode()
         fixed_rtstruct = self.fixed_rtstruct_selector.currentNode()
 
+        # =======================================================
+        # 1. CACHÉ DE ESTADO DE UI (Protección contra el refresco)
+        # =======================================================
+        estructura_visualizacion_activa = self.rtstruct_selector.currentNode()
+
         # Leemos qué algoritmos quiere el usuario
         use_deformable = self.deformable_checkbox.isChecked()
         use_affine = self.affine_checkbox.isChecked()
@@ -1029,6 +1054,10 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.dose_a_selector.setCurrentNode(aligned_dose_node)
             self.dose_b_selector.setCurrentNode(fixed_dose)
 
+            # Restaurar la estructura que el usuario estaba visualizando
+            if estructura_visualizacion_activa:
+                self.rtstruct_selector.setCurrentNode(estructura_visualizacion_activa)
+
             slicer.util.showStatusMessage("Registration and Dose resampling completed!")
             slicer.util.infoDisplay(
                 "Successful alignment.\n\nLook for the new Dose volume with the suffix '_Resampled' in your Base Dose (RT1) list to perform the calculation.",
@@ -1073,47 +1102,35 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Si se selecciona "None", vaciamos la tabla
             self.segments_table.setSegmentationNode(None)
 
-    def onHideAllStructures(self):
-        slicer.util.showStatusMessage("Coordinating visibility for all structures...")
+    def onShowAllStructures(self):
+        slicer.util.showStatusMessage("Showing all structures...")
         slicer.app.processEvents()
 
         segmentation_nodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
-
-        # =======================================================
-        # PASO 1: Evaluación Global (¿Hay ALGO encendido en la escena?)
-        # =======================================================
-        global_any_visible = False
-
         for node in segmentation_nodes:
             display_node = node.GetDisplayNode()
             if display_node:
-                segmentation = node.GetSegmentation()
-                for i in range(segmentation.GetNumberOfSegments()):
-                    segment_id = segmentation.GetNthSegmentID(i)
-                    if display_node.GetSegmentVisibility(segment_id):
-                        global_any_visible = True
-                        break  # Encontramos uno encendido, dejamos de buscar el primer set
-            if global_any_visible:
-                break  # Rompemos el ciclo principal, ya tenemos nuestra respuesta global
-
-        # =======================================================
-        # PASO 2: Acción Sincronizada (Aplicar a todos usando la decisión GLOBAL)
-        # =======================================================
-        for node in segmentation_nodes:
-            display_node = node.GetDisplayNode()
-            if display_node:
-                # 1. OBLIGATORIO: Mantener el contenedor padre encendido para que la tabla funcione
+                # 1. Mantiene el contenedor padre encendido
                 display_node.SetVisibility(True)
+                # 2. Enciende absolutamente todos los segmentos
+                display_node.SetAllSegmentsVisibility(True)
 
-                # 2. Sincronizar la interfaz basándonos estrictamente en el estado global
-                if global_any_visible:
-                    # Si había al menos una estructura visible en toda la escena, la orden para TODOS es apagar
-                    display_node.SetAllSegmentsVisibility(False)
-                else:
-                    # Si absolutamente todo estaba oculto en la escena, la orden para TODOS es encender
-                    display_node.SetAllSegmentsVisibility(True)
+        slicer.util.showStatusMessage("All structures are now visible")
 
-        slicer.util.showStatusMessage("")
+    def onHideAllStructures(self):
+        slicer.util.showStatusMessage("Hiding all structures...")
+        slicer.app.processEvents()
+
+        segmentation_nodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
+        for node in segmentation_nodes:
+            display_node = node.GetDisplayNode()
+            if display_node:
+                # 1. Mantiene el contenedor padre encendido (vital para la tabla)
+                display_node.SetVisibility(True)
+                # 2. Apaga absolutamente todos los segmentos
+                display_node.SetAllSegmentsVisibility(False)
+
+        slicer.util.showStatusMessage("All structures are now hidden")
 
     def onLoadStructuresForBiology(self):
         # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
