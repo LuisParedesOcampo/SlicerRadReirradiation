@@ -52,89 +52,88 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================================================================
         registrationCollapsibleButton = ctk.ctkCollapsibleButton()
         registrationCollapsibleButton.text = "1: Load Reirradiation Data"
-        registrationCollapsibleButton.collapsed = False  # Que inicie abierto
+        registrationCollapsibleButton.collapsed = False
         self.layout.addWidget(registrationCollapsibleButton)
 
-        # Layout principal del panel
         registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
 
         # =======================================================
-        # GRUPO 1: DATOS PREVIOS (MÓVILES)
+        # BOTÓN MÁGICO: AUTO-DETECCIÓN Y AISLAMIENTO
         # =======================================================
-        rt1_groupBox = qt.QGroupBox("RT1: Previous Treatment (Moving)")
-        rt1_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        rt1_layout = qt.QFormLayout(rt1_groupBox)
+        self.auto_detect_button = qt.QPushButton("Auto-Detect & Isolate Studies (By Date)")
+        self.auto_detect_button.setStyleSheet(
+            "background-color: #8e44ad; color: white; padding: 5px; font-weight: bold;")
+        self.auto_detect_button.setToolTip(
+            "Escanea la jerarquía DICOM, separa automáticamente el estudio antiguo del nuevo y bloquea el cruce de datos.")
+        registrationFormLayout.addRow(self.auto_detect_button)
 
-        # Selector: CT RT1 Tratamiento Móvil (Antiguo)
+        self.auto_detect_button.connect('clicked(bool)', self.onAutoDetectStudies)
+
+        # =======================================================
+        # GRUPO 1: DATOS PREVIOS (MÓVILES) -> Etiqueta "PREV"
+        # =======================================================
+        self.rt1_groupBox = qt.QGroupBox("RT1: Previous Treatment (Moving)")  # <-- Agregamos self.
+        self.rt1_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        rt1_layout = qt.QFormLayout(self.rt1_groupBox)  # <-- Cambiamos aquí también
+
         self.moving_ct_selector = slicer.qMRMLNodeComboBox()
         self.moving_ct_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.moving_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "StudyRole", "PREV")
+        self.moving_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "PREV_CT")
         self.moving_ct_selector.setMRMLScene(slicer.mrmlScene)
-        self.moving_ct_selector.setToolTip("CT from the previous treatment RT1 (Moving).")
         rt1_layout.addRow("CT Volume: ", self.moving_ct_selector)
 
-        # Selector: Dosis Antigua (A remuestrear)
         self.moving_dose_selector = slicer.qMRMLNodeComboBox()
         self.moving_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.moving_dose_selector.showChildNodeTypes = True  # Vital para ver RTDOSE
+        self.moving_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "StudyRole", "PREV")
+        self.moving_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "PREV_DOSE")
+        self.moving_dose_selector.showChildNodeTypes = True
         self.moving_dose_selector.setMRMLScene(slicer.mrmlScene)
-        self.moving_dose_selector.setToolTip(
-            "The Dose (RD) from the previous treatment RT1 that you want to align to the new grid.")
         rt1_layout.addRow("Dose (RTDOSE): ", self.moving_dose_selector)
 
-        # Selector para las estructuras del TAC móvil (Prev)
         self.moving_rtstruct_selector = slicer.qMRMLNodeComboBox()
         self.moving_rtstruct_selector.nodeTypes = ["vtkMRMLSegmentationNode"]
-        self.moving_rtstruct_selector.selectNodeUponCreation = False
-        self.moving_rtstruct_selector.addEnabled = False
-        self.moving_rtstruct_selector.removeEnabled = False
+        self.moving_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "StudyRole", "PREV")
+        self.moving_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationRole", "PREV_RS")
         self.moving_rtstruct_selector.noneEnabled = True
         self.moving_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
-        self.moving_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC móvil previo")
         rt1_layout.addRow("Structures (RTSTRUCT): ", self.moving_rtstruct_selector)
 
-        # Añadimos el Grupo 1 completo al layout principal
-        registrationFormLayout.addRow(rt1_groupBox)
+        registrationFormLayout.addRow(self.rt1_groupBox)
 
         # =======================================================
-        # GRUPO 2: DATOS ACTUALES (FIJOS)
+        # GRUPO 2: DATOS ACTUALES (FIJOS) -> Etiqueta "CURR"
         # =======================================================
-        rt2_groupBox = qt.QGroupBox("RT2: Current Plan (Fixed)")
-        rt2_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        rt2_layout = qt.QFormLayout(rt2_groupBox)
+        self.rt2_groupBox = qt.QGroupBox("RT2: Current Plan (Fixed)")  # <-- Agregamos self.
+        self.rt2_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        rt2_layout = qt.QFormLayout(self.rt2_groupBox)  # <-- Cambiamos aquí también
 
-        # Selector: CT RT2 tratamiento Fijo (Nuevo)
         self.fixed_ct_selector = slicer.qMRMLNodeComboBox()
         self.fixed_ct_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.fixed_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "StudyRole", "CURR")
+        self.fixed_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "CURR_CT")
         self.fixed_ct_selector.setMRMLScene(slicer.mrmlScene)
-        self.fixed_ct_selector.setToolTip("CT from the planned treatment RT2 (Fixed).")
         rt2_layout.addRow("CT Volume: ", self.fixed_ct_selector)
 
-        # Selector: Dosis Nueva (Para usar su cuadrícula como molde)
         self.fixed_dose_selector = slicer.qMRMLNodeComboBox()
         self.fixed_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.fixed_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "StudyRole", "CURR")
+        self.fixed_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "CURR_DOSE")
         self.fixed_dose_selector.showChildNodeTypes = True
         self.fixed_dose_selector.setMRMLScene(slicer.mrmlScene)
-        self.fixed_dose_selector.setToolTip(
-            "The Dosage of the NEW plan. Its geometric matrix will be used as a template.")
         rt2_layout.addRow("Dose (RTDOSE): ", self.fixed_dose_selector)
 
-        # Selector de seguridad para las estructuras del TAC fijo (Current)
         self.fixed_rtstruct_selector = slicer.qMRMLNodeComboBox()
         self.fixed_rtstruct_selector.nodeTypes = ["vtkMRMLSegmentationNode"]
-        self.fixed_rtstruct_selector.selectNodeUponCreation = False
-        self.fixed_rtstruct_selector.addEnabled = False
-        self.fixed_rtstruct_selector.removeEnabled = False
+        self.fixed_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "StudyRole", "CURR")
+        self.fixed_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationRole", "CURR_RS")
         self.fixed_rtstruct_selector.noneEnabled = True
         self.fixed_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
-        self.fixed_rtstruct_selector.setToolTip("Selecciona las estructuras asociadas al TAC fijo actual")
         rt2_layout.addRow("Structures (RTSTRUCT): ", self.fixed_rtstruct_selector)
 
-        # Añadimos el Grupo 2 completo al layout principal
-        registrationFormLayout.addRow(rt2_groupBox)
+        registrationFormLayout.addRow(self.rt2_groupBox)
 
-        # =======================================================
-        # CONEXIONES DE SEÑALES
-        # =======================================================
+        # Conexiones para que el visualizador del Panel 2 se actualice solo
         self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
         self.moving_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
 
@@ -596,6 +595,92 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # ====================================================================================================================
     # FUNCIONES CONECTADAS
     # ==================================================================================================================
+    def onAutoDetectStudies(self):
+        slicer.util.showStatusMessage("Scanning DICOM database and isolating studies...")
+        slicer.app.processEvents()
+
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        studies_dict = {}
+
+        # 1. Escanear todos los volúmenes en la escena para ubicar los estudios raíz
+        all_volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+        for volume in all_volumes:
+            item_id = shNode.GetItemByDataNode(volume)
+            if item_id:
+                study_item_id = shNode.GetItemAncestorAtLevel(item_id,
+                                                              slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelStudy())
+                if study_item_id:
+                    study_date = shNode.GetItemAttribute(study_item_id, 'DICOM.StudyDate')
+                    if study_date and study_item_id not in studies_dict:
+                        studies_dict[study_item_id] = study_date
+
+        if len(studies_dict) < 2:
+            slicer.util.warningDisplay(
+                "No se detectaron dos estudios en la escena. Asegúrate de cargar el DICOM previo y el actual.",
+                windowTitle="Auto-Detect Failed")
+            slicer.util.showStatusMessage("")
+            return
+
+        # 2. Ordenar cronológicamente (YYYYMMDD) y extraer las fechas
+        sorted_studies = sorted(studies_dict.items(), key=lambda x: x[1])
+
+        # Obtenemos tanto el ID de la carpeta como la fecha en crudo
+        prev_study_id, prev_date_raw = sorted_studies[0]
+        curr_study_id, curr_date_raw = sorted_studies[-1]
+
+        # --- MAGIA UX: Formatear fecha y actualizar títulos ---
+        def format_dicom_date(d):
+            # Convierte "20250616" en "2025-06-16"
+            return f"{d[:4]}-{d[4:6]}-{d[6:]}" if d and len(d) == 8 else (d or "Unknown")
+
+        prev_date_str = format_dicom_date(prev_date_raw)
+        curr_date_str = format_dicom_date(curr_date_raw)
+
+        self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {prev_date_str} ]")
+        self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {curr_date_str} ]")
+        # --------------------------------------------------------
+
+        # 3. Inyectar los roles al ADN de los nodos (usando la súper-etiqueta)
+        self._tagNodesInStudy(shNode, prev_study_id, "PREV")
+        self._tagNodesInStudy(shNode, curr_study_id, "CURR")
+
+        # 4. Auto-Seleccionar el archivo más reciente de cada categoría
+        self._autoSelectLatestNode(self.moving_ct_selector)
+        self._autoSelectLatestNode(self.moving_dose_selector)
+        self._autoSelectLatestNode(self.moving_rtstruct_selector)
+
+        self._autoSelectLatestNode(self.fixed_ct_selector)
+        self._autoSelectLatestNode(self.fixed_dose_selector)
+        self._autoSelectLatestNode(self.fixed_rtstruct_selector)
+
+        slicer.util.showStatusMessage("Data successfully isolated and auto-assigned!")
+
+    def _tagNodesInStudy(self, shNode, study_item_id, role_prefix):
+        """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT, CURR_DOSE, PREV_RS)"""
+        children = vtk.vtkIdList()
+        shNode.GetItemChildren(study_item_id, children, True)
+
+        for i in range(children.GetNumberOfIds()):
+            child_id = children.GetId(i)
+            data_node = shNode.GetItemDataNode(child_id)
+            if data_node:
+                # 1. Si es un volumen (CT o Dosis)
+                if data_node.IsA("vtkMRMLScalarVolumeNode"):
+                    node_name = data_node.GetName().upper()
+                    if "DOSE" in node_name:
+                        data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_DOSE")
+                    else:
+                        data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_CT")
+
+                # 2. Si es una estructura (RTSTRUCT)
+                elif data_node.IsA("vtkMRMLSegmentationNode"):
+                    data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_RS")
+
+    def _autoSelectLatestNode(self, selector):
+        """Obliga al selector a escoger el último elemento de la lista (suele ser el más reciente o la iteración final)."""
+        node_count = selector.nodeCount()
+        if node_count > 0:
+            selector.setCurrentNodeIndex(node_count - 1)
 
     def onCenterButtonClicked(self):
 
