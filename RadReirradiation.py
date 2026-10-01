@@ -60,7 +60,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # =======================================================
         # BOTÓN MÁGICO: AUTO-DETECCIÓN Y AISLAMIENTO
         # =======================================================
-        self.auto_detect_button = qt.QPushButton("Auto-Detect & Isolate Studies (By Date)")
+        self.auto_detect_button = qt.QPushButton("Select Studies and Auto-match (by date)")
         self.auto_detect_button.setStyleSheet(
             "background-color: #8e44ad; color: white; padding: 5px; font-weight: bold;")
         self.auto_detect_button.setToolTip(
