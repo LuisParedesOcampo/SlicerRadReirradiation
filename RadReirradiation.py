@@ -596,55 +596,162 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # FUNCIONES CONECTADAS
     # ==================================================================================================================
     def onAutoDetectStudies(self):
-        slicer.util.showStatusMessage("Scanning DICOM database and isolating studies...")
+        slicer.util.showStatusMessage("Scanning DICOM database...")
         slicer.app.processEvents()
 
-        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        studies_dict = {}
+        # =======================================================
+        # PASO 0: LIMPIEZA GLOBAL (Evita el congelamiento)
+        # =======================================================
+        all_scene_nodes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")) + list(
+            slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
 
-        # 1. Escanear todos los volúmenes en la escena para ubicar los estudios raíz
+        for node in all_scene_nodes:
+            node.RemoveAttribute("RadReirradiationRole")
+            node.RemoveAttribute("StudyRole")
+            node.RemoveAttribute("VolumeType")
+
+        self.rt1_groupBox.setTitle("RT1: Previous Treatment (Moving)")
+        self.rt2_groupBox.setTitle("RT2: Current Plan (Fixed)")
+
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         all_volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+
+        # =======================================================
+        # PASO 1: Identificar pacientes
+        # =======================================================
+        patients_dict = {}
+
         for volume in all_volumes:
             item_id = shNode.GetItemByDataNode(volume)
             if item_id:
-                study_item_id = shNode.GetItemAncestorAtLevel(item_id,
-                                                              slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelStudy())
-                if study_item_id:
-                    study_date = shNode.GetItemAttribute(study_item_id, 'DICOM.StudyDate')
-                    if study_date and study_item_id not in studies_dict:
-                        studies_dict[study_item_id] = study_date
+                patient_id = shNode.GetItemAncestorAtLevel(item_id,
+                                                           slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelPatient())
+                if patient_id and patient_id != 0:
+                    if patient_id not in patients_dict:
+                        patients_dict[patient_id] = shNode.GetItemName(patient_id)
+
+        if not patients_dict:
+            slicer.util.warningDisplay("No DICOM patients found in the scene.")
+            return
+
+        target_patient_id = None
+
+        # =======================================================
+        # PASO 2: Resolver múltiples pacientes
+        # =======================================================
+        if len(patients_dict) > 1:
+            patient_names = list(patients_dict.values())
+            selected_name = qt.QInputDialog.getItem(None, "Multiple Patients", "Select patient:", patient_names, 0,
+                                                    False)
+            if not selected_name: return
+            for pid, pname in patients_dict.items():
+                if pname == selected_name:
+                    target_patient_id = pid
+                    break
+        else:
+            target_patient_id = list(patients_dict.keys())[0]
+
+        # =======================================================
+        # PASO 3: Recolectar estudios SOLO del paciente seleccionado
+        # =======================================================
+        studies_dict = {}
+        for volume in all_volumes:
+            item_id = shNode.GetItemByDataNode(volume)
+            if item_id:
+                patient_id = shNode.GetItemAncestorAtLevel(item_id,
+                                                           slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelPatient())
+                if patient_id == target_patient_id:
+                    study_item_id = shNode.GetItemAncestorAtLevel(item_id,
+                                                                  slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelStudy())
+                    if study_item_id:
+                        study_date = shNode.GetItemAttribute(study_item_id, 'DICOM.StudyDate')
+                        if study_date and study_item_id not in studies_dict:
+                            studies_dict[study_item_id] = study_date
 
         if len(studies_dict) < 2:
             slicer.util.warningDisplay(
-                "No se detectaron dos estudios en la escena. Asegúrate de cargar el DICOM previo y el actual.",
-                windowTitle="Auto-Detect Failed")
-            slicer.util.showStatusMessage("")
+                f"No se detectaron dos estudios para el paciente '{patients_dict[target_patient_id]}'.")
             return
 
-        # 2. Ordenar cronológicamente (YYYYMMDD) y extraer las fechas
         sorted_studies = sorted(studies_dict.items(), key=lambda x: x[1])
 
-        # Obtenemos tanto el ID de la carpeta como la fecha en crudo
-        prev_study_id, prev_date_raw = sorted_studies[0]
-        curr_study_id, curr_date_raw = sorted_studies[-1]
-
-        # --- MAGIA UX: Formatear fecha y actualizar títulos ---
         def format_dicom_date(d):
-            # Convierte "20250616" en "2025-06-16"
             return f"{d[:4]}-{d[4:6]}-{d[6:]}" if d and len(d) == 8 else (d or "Unknown")
 
+        # =======================================================
+        # PASO 3.5: Resolver múltiples fechas (Más de 2 estudios)
+        # =======================================================
+        if len(sorted_studies) > 2:
+            dialog = qt.QDialog()
+            dialog.setWindowTitle("Multiple Studies Detected")
+            dialog.setMinimumWidth(350)
+            layout = qt.QFormLayout(dialog)
+
+            layout.addRow(qt.QLabel("This patient has multiple studies.\nPlease select the dates to compare:"))
+
+            rt1_combo = qt.QComboBox()
+            rt2_combo = qt.QComboBox()
+
+            for study_id, raw_date in sorted_studies:
+                formatted_date = format_dicom_date(raw_date)
+                rt1_combo.addItem(formatted_date, study_id)
+                rt2_combo.addItem(formatted_date, study_id)
+
+            rt1_combo.setCurrentIndex(0)
+            rt2_combo.setCurrentIndex(len(sorted_studies) - 1)
+
+            layout.addRow("RT1 (Previous):", rt1_combo)
+            layout.addRow("RT2 (Current):", rt2_combo)
+
+            # ==========================================
+            # CORRECCIÓN DE BOTONES (Garantiza que se dibujen)
+            # ==========================================
+            buttonBox = qt.QDialogButtonBox()
+
+            okButton = qt.QPushButton("OK")
+            okButton.setDefault(True)  # Hace que responda a la tecla 'Enter'
+
+            cancelButton = qt.QPushButton("Cancel")
+
+            buttonBox.addButton(okButton, qt.QDialogButtonBox.AcceptRole)
+            buttonBox.addButton(cancelButton, qt.QDialogButtonBox.RejectRole)
+
+            # Agregamos los botones a la ventana
+            layout.addRow("", buttonBox)
+
+            buttonBox.accepted.connect(dialog.accept)
+            buttonBox.rejected.connect(dialog.reject)
+            # ==========================================
+
+            if not dialog.exec_():
+                slicer.util.showStatusMessage("Study selection cancelled.")
+                return
+
+            prev_study_id = rt1_combo.currentData
+            curr_study_id = rt2_combo.currentData
+
+            if prev_study_id == curr_study_id:
+                slicer.util.warningDisplay("RT1 y RT2 no pueden ser la misma fecha. Operación cancelada.")
+                return
+
+            prev_date_raw = studies_dict[prev_study_id]
+            curr_date_raw = studies_dict[curr_study_id]
+        else:
+            prev_study_id, prev_date_raw = sorted_studies[0]
+            curr_study_id, curr_date_raw = sorted_studies[-1]
+
+        # =======================================================
+        # PASO 4: Ordenar, Etiquetar y Asignar
+        # =======================================================
         prev_date_str = format_dicom_date(prev_date_raw)
         curr_date_str = format_dicom_date(curr_date_raw)
 
         self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {prev_date_str} ]")
         self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {curr_date_str} ]")
-        # --------------------------------------------------------
 
-        # 3. Inyectar los roles al ADN de los nodos (usando la súper-etiqueta)
         self._tagNodesInStudy(shNode, prev_study_id, "PREV")
         self._tagNodesInStudy(shNode, curr_study_id, "CURR")
 
-        # 4. Auto-Seleccionar el archivo más reciente de cada categoría
         self._autoSelectLatestNode(self.moving_ct_selector)
         self._autoSelectLatestNode(self.moving_dose_selector)
         self._autoSelectLatestNode(self.moving_rtstruct_selector)
@@ -653,7 +760,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._autoSelectLatestNode(self.fixed_dose_selector)
         self._autoSelectLatestNode(self.fixed_rtstruct_selector)
 
-        slicer.util.showStatusMessage("Data successfully isolated and auto-assigned!")
+        slicer.util.showStatusMessage(f"Data isolated for patient: {patients_dict[target_patient_id]}")
 
     def _tagNodesInStudy(self, shNode, study_item_id, role_prefix):
         """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT, CURR_DOSE, PREV_RS)"""
