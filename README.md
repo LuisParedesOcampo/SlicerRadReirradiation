@@ -6,23 +6,18 @@
 
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
 
-## 🚀 What's New in Version 2.0 (Clinical Workflow Update)
+## 🚀 What's New in Version 2.1 (Workflow Update)
 
-### 1. Automated TPS DICOM Export (Eclipse Ready)
-* **Seamless Export:** Export your accumulated EQD2 dose directly back to commercial TPS environments (like Varian Eclipse). The algorithm automatically traces the original DICOM metadata, generates a "shadow" RTPLAN, and bundles the original RTSTRUCT to ensure 100% compatibility upon import, bypassing standard TPS dose-lock restrictions.
+Version 2.1 introduces a massive quality-of-life update focused on clinical workflow automation, drastically reducing manual data assignment and preventing human error during DICOM handling.
 
-### 2. Native Clinical PDF Reporting
-* **One-Click Documentation:** Generate comprehensive, print-ready PDF clinical reports directly within Slicer. The report automatically extracts patient metadata (Name, ID) from the DICOM hierarchy and logs all registration parameters, biological roles, temporal recovery factors, and cumulative dosimetric metrics (DMax, DMean) for legal and clinical traceability.
-
-### 3. Smart DICOM Fraction Auto-Detection
-* **Silent Metadata Tracking:** The module now utilizes advanced hierarchical attribute tracking to automatically locate the source `RTPLAN` of any selected `RTDOSE`. It silently extracts and populates the exact number of planned fractions, eliminating manual entry and reducing human error. 
-
-### 4. Structure-Specific Biological Roles & Dual Alpha/Beta (α/β)
-* **Interactive Roles Table:** A new Biological Configuration panel allows users to dynamically assign 'Tumor' or 'OAR' (Organ At Risk) roles to each visible structure.
-* **Simultaneous Dual α/β Calculation:** Compute EQD2/BED using two distinct α/β ratios simultaneously in a single run, eliminating repetitive workflows when evaluating both tumor control and late tissue toxicity.
-
-### 5. Advanced Manual Registration & Smart Algorithm Bypass
-* **Full 6-DOF Manual Control:** Precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment, equipped with a smart memory cache to ensure smooth rotations without origin-shift artifacts.
+* **Smart DICOM Auto-Detection:** 1-click button that automatically scans the 3D Slicer database, identifies the loaded studies, and assigns the correct CTs, Doses, and RTSTRUCTs based on chronological order (`StudyDate`).
+* **Robust Data Isolation:** Introduced a custom internal tagging system (e.g., `PREV_CT`, `CURR_DOSE`) that strictly filters node selection, making it mathematically impossible to accidentally cross-assign previous data into the current plan spaces.
+* **Dynamic Clinical UI:** The interface now dynamically updates its headers to display the exact treatment dates for both RT1 (Previous) and RT2 (Current), assisting medical physicists in quick clinical timeline estimations.
+* **Multi-Patient Context Awareness:** If multiple patients are loaded in the Slicer scene, the module automatically prompts an interactive pop-up to select the target patient, isolating the workflow exclusively to their data.
+* **Multi-Study Resolution Dialog:** For patients with more than two treatment dates (e.g., multiple re-irradiations or intermediate control CTs), a custom dialog box allows the user to explicitly select which two dates to compare, defaulting to the oldest and newest.
+* **Global Scene Cleanup:** Automated backend memory clearance prevents attribute ghosting or data freezing when switching between different patients during the same session.
+* **Automated TPS DICOM Export (Eclipse Ready)** Export your accumulated EQD2 dose directly back to commercial TPS environments (like Varian Eclipse). The algorithm automatically traces the original DICOM metadata, generates a "shadow" RTPLAN, and bundles the original RTSTRUCT to ensure 100% compatibility upon import, bypassing standard TPS dose-lock restrictions.
+* **Clinical PDF Reporting** Generate comprehensive, print-ready PDF clinical reports directly within Slicer. The report automatically extracts patient metadata (Name, ID) from the DICOM hierarchy and logs all registration parameters, biological roles, temporal recovery factors, and cumulative dosimetric metrics (DMax, DMean) for legal and clinical traceability.
 
 ## Features 🚀
 * **Smart UI & Automation:** The module intelligently auto-selects aligned volumes and retrieves fraction data directly from the DICOM database.
@@ -34,8 +29,11 @@
 * **"Eclipse-Style" Dose Wash:** Custom dynamic color map transition (Dark Blue to Red) with a 2 Gy threshold and 40% opacity.
 * **Clinical Safety First:** Automated UI resets and dynamic control locking ensure data integrity if configuration parameters are changed post-calculation.
 * **Dosimetric Analysis:** Metrics table (Dmax, Dmean) synchronized with structure visibility.
-*  **DVH Generation:** Generation of interactive DVH curves within the Slicer.
+* **DVH Generation:** Generation of interactive DVH curves within the Slicer.
 * **Hybrid Image Registration:** Choose between fully automatic Rigid/Deformable registration (powered by BRAINSFit) or highly precise Manual Alignment with 6 Degrees of Freedom (Translational & Rotational).
+* **Silent Metadata Tracking:** The module now utilizes advanced hierarchical attribute tracking to automatically locate the source `RTPLAN` of any selected `RTDOSE`. It silently extracts and populates the exact number of planned fractions, eliminating manual entry and reducing human error.
+* **Simultaneous Dual α/β Calculation:** Compute EQD2/BED using two distinct α/β ratios simultaneously in a single run, eliminating repetitive workflows when evaluating both tumor control and late tissue toxicity.
+* **Full 6-DOF Manual Control:** Precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment, equipped with a smart memory cache to ensure smooth rotations without origin-shift artifacts.
 
 ## 📚 Scientific Foundation and References
 The development of RadReirradiation is based on international standards for reporting and accumulating biological doses.
