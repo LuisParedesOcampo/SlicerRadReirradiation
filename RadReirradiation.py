@@ -600,16 +600,17 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.app.processEvents()
 
         # =======================================================
-        # PASO 0: LIMPIEZA GLOBAL (Evita el congelamiento)
+        # PASO 0: LIMPIEZA GLOBAL Y REINICIO DE UI
         # =======================================================
         all_scene_nodes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")) + list(
             slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
 
         for node in all_scene_nodes:
             node.RemoveAttribute("RadReirradiationRole")
-            node.RemoveAttribute("StudyRole")
             node.RemoveAttribute("VolumeType")
 
+        # Restauramos la interfaz al modo estricto por defecto
+        self._setSelectorsMode("STRICT")
         self.rt1_groupBox.setTitle("RT1: Previous Treatment (Moving)")
         self.rt2_groupBox.setTitle("RT2: Current Plan (Fixed)")
 
@@ -620,7 +621,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PASO 1: Identificar pacientes
         # =======================================================
         patients_dict = {}
-
         for volume in all_volumes:
             item_id = shNode.GetItemByDataNode(volume)
             if item_id:
@@ -668,9 +668,34 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         if study_date and study_item_id not in studies_dict:
                             studies_dict[study_item_id] = study_date
 
+        # =======================================================
+        # PASO 3.1: CASO ESPECIAL - UN SOLO ESTUDIO (Braquiterapia / Consolidado)
+        # =======================================================
         if len(studies_dict) < 2:
-            slicer.util.warningDisplay(
-                f"No se detectaron dos estudios para el paciente '{patients_dict[target_patient_id]}'.")
+            patient_name = patients_dict[target_patient_id]
+            single_study_id = list(studies_dict.keys())[0]
+            single_date = studies_dict[single_study_id]
+
+            # Preguntamos al usuario si desea activar el modo manual
+            manual_override = slicer.util.confirmOkCancelDisplay(
+                f"Only one study was detected. ({single_date}) for the patient/data set '{patient_name}'.\n\n"
+                "This occurs with exports or plan consolidations on the same date..\n\n"
+                "Do you want to unlock the selectors to assign the files manually?",
+                windowTitle="Manual Mode"
+            )
+
+            if manual_override:
+                # Cambiamos las reglas de la UI y etiquetamos los nodos
+                self._tagNodesForManualMode(shNode, single_study_id)
+                self._setSelectorsMode("MANUAL")
+
+                # Formateamos el título para avisar que está en modo manual
+                fmt_date = f"{single_date[:4]}-{single_date[4:6]}-{single_date[6:]}" if single_date and len(
+                    single_date) == 8 else "Unknown"
+                self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {fmt_date} | MANUAL ]")
+                self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {fmt_date} | MANUAL ]")
+
+                slicer.util.showStatusMessage("Manual selection mode unlocked. Please assign the files..")
             return
 
         sorted_studies = sorted(studies_dict.items(), key=lambda x: x[1])
@@ -686,7 +711,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             dialog.setWindowTitle("Multiple Studies Detected")
             dialog.setMinimumWidth(350)
             layout = qt.QFormLayout(dialog)
-
             layout.addRow(qt.QLabel("This patient has multiple studies.\nPlease select the dates to compare:"))
 
             rt1_combo = qt.QComboBox()
@@ -703,25 +727,17 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             layout.addRow("RT1 (Previous):", rt1_combo)
             layout.addRow("RT2 (Current):", rt2_combo)
 
-            # ==========================================
-            # CORRECCIÓN DE BOTONES (Garantiza que se dibujen)
-            # ==========================================
             buttonBox = qt.QDialogButtonBox()
-
             okButton = qt.QPushButton("OK")
-            okButton.setDefault(True)  # Hace que responda a la tecla 'Enter'
-
+            okButton.setDefault(True)
             cancelButton = qt.QPushButton("Cancel")
 
             buttonBox.addButton(okButton, qt.QDialogButtonBox.AcceptRole)
             buttonBox.addButton(cancelButton, qt.QDialogButtonBox.RejectRole)
-
-            # Agregamos los botones a la ventana
             layout.addRow("", buttonBox)
 
             buttonBox.accepted.connect(dialog.accept)
             buttonBox.rejected.connect(dialog.reject)
-            # ==========================================
 
             if not dialog.exec_():
                 slicer.util.showStatusMessage("Study selection cancelled.")
@@ -731,7 +747,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             curr_study_id = rt2_combo.currentData
 
             if prev_study_id == curr_study_id:
-                slicer.util.warningDisplay("RT1 y RT2 no pueden ser la misma fecha. Operación cancelada.")
+                slicer.util.warningDisplay(
+                    "RT1 and RT2 cannot be the same date in automatic mode. Operation cancelled..")
                 return
 
             prev_date_raw = studies_dict[prev_study_id]
@@ -761,6 +778,62 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._autoSelectLatestNode(self.fixed_rtstruct_selector)
 
         slicer.util.showStatusMessage(f"Data isolated for patient: {patients_dict[target_patient_id]}")
+
+    # ==========================================================
+    # FUNCIONES AUXILIARES PARA EL MODO MANUAL INTELIGENTE
+    # ==========================================================
+    def _setSelectorsMode(self, mode):
+        """Alterna los filtros de la interfaz entre el modo estricto (por fechas) y el manual (por tipo de archivo)"""
+        # Limpiar atributos actuales
+        selectors = [
+            (self.moving_ct_selector, "vtkMRMLScalarVolumeNode"),
+            (self.moving_dose_selector, "vtkMRMLScalarVolumeNode"),
+            (self.moving_rtstruct_selector, "vtkMRMLSegmentationNode"),
+            (self.fixed_ct_selector, "vtkMRMLScalarVolumeNode"),
+            (self.fixed_dose_selector, "vtkMRMLScalarVolumeNode"),
+            (self.fixed_rtstruct_selector, "vtkMRMLSegmentationNode")
+        ]
+
+        for selector, node_type in selectors:
+            selector.removeAttribute(node_type, "RadReirradiationRole")
+            selector.removeAttribute(node_type, "VolumeType")
+
+        if mode == "STRICT":
+            self.moving_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "PREV_CT")
+            self.moving_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "PREV_DOSE")
+            self.moving_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationRole", "PREV_RS")
+
+            self.fixed_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "CURR_CT")
+            self.fixed_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "RadReirradiationRole", "CURR_DOSE")
+            self.fixed_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationRole", "CURR_RS")
+
+        elif mode == "MANUAL":
+            # El modo manual quita la restricción de PREV/CURR pero MANTIENE la de CT/DOSE
+            self.moving_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "CT")
+            self.moving_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "DOSE")
+            self.moving_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "VolumeType", "RS")
+
+            self.fixed_ct_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "CT")
+            self.fixed_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "DOSE")
+            self.fixed_rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "VolumeType", "RS")
+
+    def _tagNodesForManualMode(self, shNode, study_item_id):
+        """Inyecta una etiqueta genérica a todos los archivos de un estudio para proteger su modalidad (CT vs DOSE)"""
+        children = vtk.vtkIdList()
+        shNode.GetItemChildren(study_item_id, children, True)
+
+        for i in range(children.GetNumberOfIds()):
+            child_id = children.GetId(i)
+            data_node = shNode.GetItemDataNode(child_id)
+            if data_node:
+                if data_node.IsA("vtkMRMLScalarVolumeNode"):
+                    node_name = data_node.GetName().upper()
+                    if "DOSE" in node_name:
+                        data_node.SetAttribute("VolumeType", "DOSE")
+                    else:
+                        data_node.SetAttribute("VolumeType", "CT")
+                elif data_node.IsA("vtkMRMLSegmentationNode"):
+                    data_node.SetAttribute("VolumeType", "RS")
 
     def _tagNodesInStudy(self, shNode, study_item_id, role_prefix):
         """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT, CURR_DOSE, PREV_RS)"""
