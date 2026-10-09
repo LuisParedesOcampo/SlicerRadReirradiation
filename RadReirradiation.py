@@ -99,6 +99,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.moving_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
         rt1_layout.addRow("Structures (RTSTRUCT): ", self.moving_rtstruct_selector)
 
+        # SpinBox for fractions_a (RT1)
+        self.fractions_a_spinbox = qt.QSpinBox()
+        self.fractions_a_spinbox.setValue(25)
+        self.fractions_a_spinbox.setMaximum(100)
+        self.fractions_a_spinbox.setStyleSheet("background-color: #fdf2e9; color: black; font-weight: normal;")
+        self.fractions_a_spinbox.setToolTip("Number of fractions delivered in the previous treatment.")
+        rt1_layout.addRow("Fractions Delivered: ", self.fractions_a_spinbox)
+
         registrationFormLayout.addRow(self.rt1_groupBox)
 
         # =======================================================
@@ -130,6 +138,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_rtstruct_selector.noneEnabled = True
         self.fixed_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
         rt2_layout.addRow("Structures (RTSTRUCT): ", self.fixed_rtstruct_selector)
+
+        # ---  Fracciones integradas al contexto del plan actual ---
+        self.fractions_b_spinbox = qt.QSpinBox()
+        self.fractions_b_spinbox.setValue(10)
+        self.fractions_b_spinbox.setMaximum(100)
+        self.fractions_b_spinbox.setStyleSheet("background-color: #fdf2e9; color: black; font-weight: normal;")
+        self.fractions_b_spinbox.setToolTip("Number of fractions planned for the current treatment.")
+        rt2_layout.addRow("Fractions Planned: ", self.fractions_b_spinbox)
 
         registrationFormLayout.addRow(self.rt2_groupBox)
 
@@ -408,62 +424,11 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         parametersFormLayout.addRow(doses_groupBox)
 
         # =======================================================
-        # GRUPO 2: PARÁMETROS BIOLÓGICOS Y DE FRACCIONAMIENTO
+        # GRUPO 3: CONFIGURACIÓN DE SALIDA
         # =======================================================
-        bio_groupBox = qt.QGroupBox("3.2: Biological & Fractionation Parameters")
-        bio_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        bio_layout = qt.QFormLayout(bio_groupBox)
-
-        # SpinBox for fractions_a (RT1)
-        self.fractions_a_spinbox = qt.QSpinBox()
-        self.fractions_a_spinbox.setValue(25)
-        self.fractions_a_spinbox.setMaximum(100)
-        bio_layout.addRow("Fractions (RT1): ", self.fractions_a_spinbox)
-
-        # SpinBox for fractions_b (RT2)
-        self.fractions_b_spinbox = qt.QSpinBox()
-        self.fractions_b_spinbox.setValue(10)
-        self.fractions_b_spinbox.setMaximum(100)
-        bio_layout.addRow("Fractions (RT2): ", self.fractions_b_spinbox)
-
-        # SpinBox for Alpha/Beta Ratio fo OARs (ab)
-        self.ab_spinbox = qt.QDoubleSpinBox()
-        self.ab_spinbox.setValue(3.0)
-        self.ab_spinbox.setDecimals(1)
-        self.ab_spinbox.setToolTip("Alpha/Beta Ratio (\u03b1/\u03b2) Organs at risk (OARs) (Gy).")
-        bio_layout.addRow("\u03b1/\u03b2 Ratio OARs (Gy): ", self.ab_spinbox)
-
-        # SpinBox for Alpha/Beta Ratio for Tumor (ab)
-        self.ab_tumor_spinbox = qt.QDoubleSpinBox()
-        self.ab_tumor_spinbox.setValue(10)
-        self.ab_tumor_spinbox.setDecimals(1)
-        self.ab_tumor_spinbox.setToolTip("Alpha/Beta Ratio (\u03b1/\u03b2) Tumor (Gy).")
-        bio_layout.addRow("\u03b1/\u03b2 Ratio Tumor (Gy): ", self.ab_tumor_spinbox)
-
-        # Añadimos el Grupo 2 al layout principal
-        parametersFormLayout.addRow(bio_groupBox)
-
-        # =======================================================
-        # GRUPO 3: RECUPERACIÓN TISULAR Y SALIDA
-        # =======================================================
-        recovery_groupBox = qt.QGroupBox("3.3: Tissue Recovery & Output Configuration")
+        recovery_groupBox = qt.QGroupBox("3.3: Output Configuration")
         recovery_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
         recovery_layout = qt.QFormLayout(recovery_groupBox)
-
-        # Recovery Factor Checkbox
-        self.recovery_checkbox = qt.QCheckBox("Enable Partial Recovery (Time-based model)")
-        self.recovery_checkbox.setChecked(False)
-        self.recovery_checkbox.setToolTip(
-            "The BED contribution from the previous irradiation course is reduced according its recovery assumption before being combined with the new treatment")
-        recovery_layout.addRow(self.recovery_checkbox)
-
-        # Months Spinbox
-        self.months_spinbox = qt.QSpinBox()
-        self.months_spinbox.setRange(0, 100)
-        self.months_spinbox.setValue(12)
-        self.months_spinbox.setSuffix(" months")
-        self.months_spinbox.setEnabled(False)  # Inicia apagado
-        recovery_layout.addRow("Time interval: ", self.months_spinbox)
 
         # Output Volume Name
         self.output_name_input = qt.QLineEdit()
@@ -473,9 +438,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Añadimos el Grupo 3 al layout principal
         parametersFormLayout.addRow(recovery_groupBox)
-
-        # --- Conexión de la casilla de meses ---
-        self.recovery_checkbox.connect('toggled(bool)', self.months_spinbox.setEnabled)
 
         # =======================================================
         # BOTÓN DE CÁLCULO MAESTRO
@@ -1078,6 +1040,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sliderRoll.value = 0
             self.sliderYaw.value = 0
 
+    # ====================================================================================================
+    #              BOTON CALCULO EQD2
+    # =========================================================================================================
     def onApplyButton(self):
         # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
         self.resetResultsDisplay()
@@ -1089,128 +1054,85 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================
         progress_dialog = slicer.util.createProgressDialog(
             parent=slicer.util.mainWindow(),
-            labelText="Calculating 3D biological Dose EQD2...\n\nThis may take a moment. Please wait.",
-            maximum=0  # ¡El '0' es el truco! Hace que la barra se mueva de lado a lado infinitamente
+            labelText="Calculating 3D Voxel-Based Dose EQD2...\n\nThis may take a moment. Please wait.",
+            maximum=0  # La barra se mueve de lado a lado infinitamente
         )
         progress_dialog.windowTitle = "RadReirradiation - Processing Dose"
-        progress_dialog.setCancelButton(None)  # Ocultamos el botón "Cancelar" para que el usuario no rompa el cálculo
+        progress_dialog.setCancelButton(None)
         progress_dialog.show()
-        slicer.app.processEvents()  # Forzamos a que la ventana se dibuje INMEDIATAMENTE en pantalla
+        slicer.app.processEvents()
 
         try:
+            slicer.util.showStatusMessage("Validating biological parameters... Please wait.")
 
-            try:
-                slicer.util.showStatusMessage("Calculating new EQD2 dose... Please wait.")
+            # ==========================================================
+            # 2. RECOLECCIÓN DE TABLA BIOLÓGICA (Panel 2.1)
+            # ==========================================================
+            current_bio_setup = self.getBiologicalConfiguration()
 
-                # ===================== TABLA BIOLÓGICA ====================================
-                # 1. Extraemos la configuración de la tabla
-                current_bio_setup = self.getBiologicalConfiguration()
+            if not current_bio_setup:
+                slicer.util.warningDisplay(
+                    "The biological table is empty. Please load and configure the structures first in Panel 2.1.",
+                    windowTitle="Validation Error")
+                return
 
-                # 2. Imprimimos para ver la magia en la consola de Python de Slicer
-                print("--- Biological configuration extracted ---")
-                for structure, config in current_bio_setup.items():
-                    print(f"structure: {structure} | Role: {config['role']} | Wins in interception: {config['priority']}")
-                print("----------------------------------------")
+            # Imprimimos en la consola de Slicer para trazabilidad clínica (QA)
+            print("\n--- RadReirradiation: Biological Configuration ---")
+            for structure, config in current_bio_setup.items():
+                print(
+                    f"[{structure}] -> Role: {config['role']} | α/β: {config['alpha_beta']} | Rec: {config['recovery_percent']}% | Wins: {config['priority']}")
+            print("------------------------------------------------\n")
 
-                # Si la tabla estaba vacía, detenemos el cálculo por seguridad
-                if not current_bio_setup:
-                    slicer.util.warningDisplay("The biological table is empty. Please load the structures first..")
-                    return
-                # =========================================================================
+            # ==========================================================
+            # 3. RECOLECCIÓN DE VARIABLES (Panel 3.1 y 3.2)
+            # ==========================================================
+            # Nota: Los campos globales de α/β y recuperación fueron eliminados aquí
+            dose_a_node = self.dose_a_selector.currentNode()
+            dose_b_node = self.dose_b_selector.currentNode()
+            fx_a = self.fractions_a_spinbox.value
+            fx_b = self.fractions_b_spinbox.value
 
-                import numpy as np
-
-                # 1. Recolectar los datos que el usuario puso en la interfaz
-                dose_a_node = self.dose_a_selector.currentNode()
-                dose_b_node = self.dose_b_selector.currentNode()
-                fx_a = self.fractions_a_spinbox.value
-                fx_b = self.fractions_b_spinbox.value
-                use_recovery = self.recovery_checkbox.isChecked()
-                months = self.months_spinbox.value
+            custom_name = ""
+            if hasattr(self, 'output_name_input'):
                 custom_name = self.output_name_input.text.strip()
 
-                # ---  LÓGICA: VALORES ALPHA/BETA ---
+            # ==========================================================
+            # 4. LLAMADA AL MOTOR MATEMÁTICO (El cerebro en la clase Logic)
+            # ==========================================================
+            slicer.util.showStatusMessage("Calculating spatial EQD2 with NumPy and SimpleITK...")
 
-                ab_oar_value = float(self.ab_spinbox.value)
-                ab_tumor_value = float(self.ab_tumor_spinbox.value)
+            # Llamamos a la función actualizada que creamos en el paso anterior
+            resultado = self.logic.procesarDosis(
+                dose_a_node=dose_a_node,
+                dose_b_node=dose_b_node,
+                fx_a=fx_a,
+                fx_b=fx_b,
+                bio_config=current_bio_setup,
+                custom_name=custom_name
+            )
 
-                # --- CREACIÓN DEL MAPA BIOLÓGICO 3D (Las Capas) ---
-                slicer.util.showStatusMessage("Generating biological masks...")
-                slicer.app.processEvents()  # Mantiene la UI fluida
+            # ==========================================================
+            # 5. ACTUALIZACIÓN VISUAL POST-CÁLCULO
+            # ==========================================================
+            self.eqd2_node = resultado
 
-                # Usamos dose_a_node como referencia para el tamaño (shape) del paciente
-                dose_array_shape = slicer.util.arrayFromVolume(dose_a_node).shape
-                ab_map = np.full(dose_array_shape, ab_oar_value, dtype=np.float32)
+            if hasattr(self, 'exportButton'):
+                self.exportButton.enabled = True
 
-                segmentation_node = self.rtstruct_selector.currentNode()
-                segmentation = segmentation_node.GetSegmentation()
+            slicer.util.showStatusMessage("Voxel-Based EQD2 calculation completed!")
+            slicer.util.infoDisplay("Cumulative EQD2 calculation successfully completed!",
+                                    windowTitle="RadReirradiation Success")
 
-                tumor_mask_global = np.zeros(dose_array_shape, dtype=bool)
-                oar_mask_global = np.zeros(dose_array_shape, dtype=bool)
-                segment_masks = {}
-
-                # Recorremos y extraemos matrices de las estructuras seleccionadas
-                for i in range(segmentation.GetNumberOfSegments()):
-                    segment_id = segmentation.GetNthSegmentID(i)
-                    segment_name = segmentation.GetSegment(segment_id).GetName()
-
-                    if segment_name in current_bio_setup:
-                        # Extraer matriz binaria, ajustada al tamaño de la dosis A
-                        segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
-                                                                                   dose_a_node)
-
-                        if segment_array is not None:
-                            binary_mask = (segment_array > 0)
-                            segment_masks[segment_name] = binary_mask
-
-                            if current_bio_setup[segment_name]["role"] == "Tumor":
-                                tumor_mask_global |= binary_mask
-                            else:
-                                oar_mask_global |= binary_mask
-
-                # Pintamos las capas en la matriz ab_map
-                ab_map[tumor_mask_global] = ab_tumor_value
-                ab_map[oar_mask_global] = ab_oar_value  # La Capa 3: OAR sobreescribe Tumor por defecto
-
-                # Capa 4: Excepciones (Si el usuario forzó que un Tumor gane)
-                for name, config in current_bio_setup.items():
-                    if config["priority"] == "Tumor" and name in segment_masks:
-                        overlap = segment_masks[name] & tumor_mask_global
-                        ab_map[overlap] = ab_tumor_value
-
-                # 2. Enviar los datos a la Lógica (el cerebro)
-                try:
-                    slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
-
-                    # ¡Llamamos a la magia! ATENCIÓN: Ahora enviamos 'ab_map' en lugar de 'ab'
-                    resultado = self.logic.procesarDosis(dose_a_node, dose_b_node, ab_map, fx_a, fx_b, use_recovery, months,
-                                                         custom_name)
-
-                    # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
-                    self.eqd2_node = resultado
-                    # Encendemos el botón verde de exportar
-                    self.exportButton.enabled = True
-
-                    slicer.util.showStatusMessage("¡Calculation completed!")
-                    slicer.util.infoDisplay("Cumulative EQD2 calculation successfully completed!",
-                                            windowTitle="RadReirradiation")
-
-                except Exception as e:
-                    # Si algo falla (ej. tamaños distintos)
-                    slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
-
-            except Exception as e:
-                slicer.util.errorDisplay(f"Calculation failed: {e}")
         except Exception as e:
-            slicer.util.errorDisplay(f"Calculation failed: {e}")
-        # ==========================================================
-        # 2. CERRAR VENTANA DE ESPERA Y LIBERAR INTERFAZ
-        # ==========================================================
+            slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
+            import traceback
+            traceback.print_exc()  # Esto imprime el error exacto en la consola por si falla algo
+
         finally:
-            #  Al terminar (o si hay error), volvemos a habilitar el botón
+            # Al terminar (o si hay error), volvemos a habilitar el botón y cerrar la ventana
             self.applyButton.setEnabled(True)
             slicer.util.showStatusMessage("Ready.")
-            progress_dialog.close()  # Destruimos la ventana de carga
+            progress_dialog.close()
 
     def updateVisualizationSelector(self, node=None):
         """Filtra el combobox del Panel 2 para mostrar solo las estructuras cargadas en el Panel 1"""
@@ -2648,63 +2570,132 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             progress.close()
             slicer.app.restoreOverrideCursor()  # Regresa el cursor a la normalidad
 
-    def procesarDosis(self, dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months, custom_name=""):
-        import numpy as np
+    def _getSegmentAndNode(self, structure_name):
+        """Busca en todos los RTSTRUCTs de la escena la estructura por su nombre."""
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+        for node in segmentation_nodes:
+            segmentation = node.GetSegmentation()
+            segment_id = segmentation.GetSegmentIdBySegmentName(structure_name)
+            if segment_id:
+                return node, segment_id
+        return None, None
 
+    def procesarDosis(self, dose_a_node, dose_b_node, fx_a, fx_b, bio_config, custom_name=""):
+        import numpy as np
+        import vtk
 
         # --- PASO A: Validaciones Clínicas ---
         if not dose_a_node or not dose_b_node:
             raise ValueError("Please select both dose matrices (RT1 y RT2).")
         if fx_a <= 0 or fx_b <= 0:
             raise ValueError("The number of fractions must be greater than zero.")
+        if not bio_config:
+            raise ValueError("Biological configuration is empty. Please generate the table in Panel 2.1.")
 
-        #  Validación matricial para Alpha/Beta
-        if np.any(ab <= 0):
-            raise ValueError("The Alpha/Beta values must be greater than zero.")
-
-        # --- PASO B: Extracción de Vóxeles ---
+        # --- PASO B: Extracción de Vóxeles Base ---
         array_a = slicer.util.arrayFromVolume(dose_a_node)
         array_b = slicer.util.arrayFromVolume(dose_b_node)
 
         if array_a.shape != array_b.shape:
             raise ValueError(
-                f"The Matrix dimensions do not match..\nDose RT1: {array_a.shape}\nDose RT2: {array_b.shape}\nYou must register and resample the images beforehand.")
+                f"The Matrix dimensions do not match.\nDose RT1: {array_a.shape}\nDose RT2: {array_b.shape}\nYou must register and resample the images beforehand.")
 
-        # --- PASO C: Matemática Radiobiológica ---
+        # ==========================================================
+        # FASE 1: CREACIÓN DE LOS MAPAS BIOLÓGICOS (Lienzos)
+        # ==========================================================
+        slicer.util.showStatusMessage("Building 3D Biological Maps...")
+        slicer.app.processEvents()
+
+        # Usamos -1.0 como marcador temporal para identificar "tejido no clasificado"
+        alpha_beta_map = np.full(array_a.shape, -1.0, dtype=np.float32)
+        recovery_map = np.full(array_a.shape, -1.0, dtype=np.float32)
+
+        # ==========================================================
+        # FASE 2: PINTADO DE MÁSCARAS Y RESOLUCIÓN DE CONFLICTOS
+        # ==========================================================
+        # Ordenamos las estructuras: Prioridad 'OAR' (0) se pinta primero, 'Tumor' (1) se pinta encima
+        sorted_structures = sorted(bio_config.items(), key=lambda item: 0 if item[1]["priority"] == "OAR" else 1)
+
+        temp_labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "Temp_Bio_Mask")
+
+        for structure_name, config in sorted_structures:
+            ab_val = config["alpha_beta"]
+            rec_percent = config["recovery_percent"] / 100.0
+            priority = config["priority"]
+
+            seg_node, segment_id = self._getSegmentAndNode(structure_name)
+
+            if seg_node and segment_id:
+                # Proyección geométrica
+                segment_ids_array = vtk.vtkStringArray()
+                segment_ids_array.InsertNextValue(segment_id)
+                slicer.modules.segmentations.logic().ExportSegmentsToLabelmapNode(seg_node, segment_ids_array,
+                                                                                  temp_labelmap, dose_a_node)
+
+                # Máscara booleana del órgano actual
+                mask = slicer.util.arrayFromVolume(temp_labelmap) > 0
+
+                if priority == "OAR":
+                    # Escenario A: El vóxel está "virgen" (-1.0). Lo pintamos directamente.
+                    blank_mask = mask & (alpha_beta_map == -1.0)
+                    alpha_beta_map[blank_mask] = ab_val
+                    recovery_map[blank_mask] = rec_percent
+
+                    # Escenario B: Solapamiento. El vóxel ya fue pintado por otro OAR previo.
+                    # MÁXIMA SEGURIDAD: Solo sobreescribimos si el nuevo α/β es MENOR.
+                    overlap_mask = mask & (alpha_beta_map != -1.0)
+                    if np.any(overlap_mask):
+                        lower_ab_mask = overlap_mask & (ab_val < alpha_beta_map)
+                        alpha_beta_map[lower_ab_mask] = ab_val
+                        recovery_map[lower_ab_mask] = rec_percent
+                else:
+                    # Lógica para Tumores: Al ser el blanco clínico, sobreescriben cualquier OAR sin preguntar.
+                    alpha_beta_map[mask] = ab_val
+                    recovery_map[mask] = rec_percent
+
+        # Limpiamos la memoria del nodo temporal
+        slicer.mrmlScene.RemoveNode(temp_labelmap)
+
+        # Llenado final de seguridad Todo el tejido de fondo que nunca fue contorneado
+        # (sigue en -1.0) asume los valores estándar de tejido sano (α/β=3.0, Rec=0%)
+        unclassified_mask = (alpha_beta_map == -1.0)
+        alpha_beta_map[unclassified_mask] = 3.0
+        recovery_map[unclassified_mask] = 0.0
+
+        # ==========================================================
+        # FASE 3: MATEMÁTICA RADIOBIOLÓGICA (VECTORIZADA)
+        # ==========================================================
+        slicer.util.showStatusMessage("Calculating Voxel-Based EQD2...")
+        slicer.app.processEvents()
+
+        # Protegemos contra divisiones por cero en caso de algún error extraño
+        alpha_beta_map = np.clip(alpha_beta_map, 0.1, 30.0)
+
         d_a = array_a / fx_a
         d_b = array_b / fx_b
-        bed_a = array_a * (1.0 + (d_a / ab))
-        bed_b = array_b * (1.0 + (d_b / ab))
-        # bed_total = bed_a + bed_b
-        #  eqd2_total = bed_total * (ab / (2.0 + ab))
-        # --- Lógica de Recuperación (Misma de tu Streamlit) ---
-        recovery = 0.0
-        if use_recovery:
-            if months < 6:
-                recovery = 0.0
-            elif months < 12:
-                recovery = 0.25
-            elif months < 24:
-                recovery = 0.50
-            else:
-                recovery = 0.65
 
-        # Calculamos el BED efectivo restando la recuperación
-        effective_bed_a = bed_a * (1.0 - recovery)
+        bed_a = array_a * (1.0 + (d_a / alpha_beta_map))
+        bed_b = array_b * (1.0 + (d_b / alpha_beta_map))
+
+        # Calculamos el BED efectivo restando la recuperación vóxel a vóxel
+        effective_bed_a = bed_a * (1.0 - recovery_map)
 
         # Sumamos el BED viejo con descuento + el BED nuevo
         bed_total = effective_bed_a + bed_b
-        eqd2_total = bed_total * (ab / (2.0 + ab))
+
+        # Convertimos de BED a EQD2 usando el mapa espacial de Alpha/Beta
+        eqd2_total = bed_total * (alpha_beta_map / (2.0 + alpha_beta_map))
 
         # --- PASO D: Retorno a Slicer ---
-        volumesLogic = slicer.modules.volumes.logic()
-        # nuevo_nombre = f"RadReirradiation_EQD2_Acumulado_ab{int(ab)}"
+        slicer.util.showStatusMessage("Rendering clinical volumes...")
+        slicer.app.processEvents()
 
-        # Ajuste de nomenclatura para evitar errores de conversión de matrices
+        volumesLogic = slicer.modules.volumes.logic()
+
         if custom_name:
             nuevo_nombre = custom_name
         else:
-            nuevo_nombre = "RadReirradiation_EQD2_Accumulated_VoxelAB"
+            nuevo_nombre = "RadReirradiation_EQD2_VoxelBased"
 
         eqd2_node = volumesLogic.CloneVolume(slicer.mrmlScene, dose_a_node, nuevo_nombre)
         eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
@@ -2713,29 +2704,23 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         # ==========================================================
         # --- PASO E: AUTOMATIZACIÓN VISUAL (RECORTE CLÍNICO) ---
         # ==========================================================
-
-        # 1. Encontrar la "Dosis Clínica Máxima" (Ignorando la singularidad de braquiterapia)
         voxeles_con_dosis = eqd2_total[eqd2_total > 1.0]
         dosis_absoluta_max = np.max(eqd2_total)
 
         if len(voxeles_con_dosis) > 0:
             p99_5 = np.percentile(voxeles_con_dosis, 99.5)
-            # Añadimos un 10% de margen visual por encima del percentil
             dosis_maxima_visual = p99_5 * 1.1
-            # Límite de seguridad
             dosis_maxima_visual = min(dosis_maxima_visual, dosis_absoluta_max)
         else:
             dosis_maxima_visual = dosis_absoluta_max
 
         umbral_minimo = 2.0
 
-        # 2. Configurar el "Display Node" (el pintor de Slicer)
         display_node = eqd2_node.GetDisplayNode()
         if display_node is None:
             eqd2_node.CreateDefaultDisplayNodes()
             display_node = eqd2_node.GetDisplayNode()
 
-        # 3. CREAR MAPA DE COLORES (Standard 0 a 1)
         color_name = "Eclipse_Dose_Wash"
         color_node = slicer.mrmlScene.GetFirstNodeByName(color_name)
 
@@ -2745,38 +2730,33 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             color_node.SetNumberOfColors(256)
 
             ctf = vtk.vtkColorTransferFunction()
-            ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)  # 0%   - Azul Oscuro
-            ctf.AddRGBPoint(0.25, 0.0, 0.8, 1.0)  # 25%  - Cyan
-            ctf.AddRGBPoint(0.50, 0.0, 1.0, 0.0)  # 50%  - Verde
-            ctf.AddRGBPoint(0.75, 1.0, 1.0, 0.0)  # 75%  - Amarillo
-            ctf.AddRGBPoint(0.90, 1.0, 0.5, 0.0)  # 90%  - Naranja
-            ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)  # 100% - Rojo
+            ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)
+            ctf.AddRGBPoint(0.25, 0.0, 0.8, 1.0)
+            ctf.AddRGBPoint(0.50, 0.0, 1.0, 0.0)
+            ctf.AddRGBPoint(0.75, 1.0, 1.0, 0.0)
+            ctf.AddRGBPoint(0.90, 1.0, 0.5, 0.0)
+            ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)
 
             for i in range(256):
                 r, g, b = ctf.GetColor(i / 255.0)
                 color_node.SetColor(i, str(i), r, g, b, 1.0)
 
         display_node.SetAndObserveColorNodeID(color_node.GetID())
-
-        # 4. Ajustar umbral: La leyenda y el gradiente van solo hasta el Límite Clínico
         display_node.SetAutoWindowLevel(False)
         display_node.SetWindowLevelMinMax(umbral_minimo, dosis_maxima_visual)
-
-        # Mantenemos el límite superior físico real para que el núcleo de braqui se pinte de rojo
         display_node.SetApplyThreshold(1)
         display_node.SetLowerThreshold(umbral_minimo)
         display_node.SetUpperThreshold(dosis_absoluta_max)
 
-        # 5. Inyectar mapa de calor
         slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
 
-        # 6. LEYENDA (SCALAR BAR)
         try:
             color_legend = slicer.modules.colors.logic().AddDefaultColorLegendDisplayNode(eqd2_node)
             color_legend.SetTitleText("Dose EQD2 (Gy)")
         except Exception as e:
             pass
 
+        slicer.util.showStatusMessage("EQD2 Voxel-Based calculation completed successfully!")
         return eqd2_node
 
 # ==========================================================
