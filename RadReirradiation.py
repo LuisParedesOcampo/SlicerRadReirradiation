@@ -312,7 +312,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 2.1: CONFIGURACIÓN BIOLÓGICA Y ASIGNACIÓN DE ROLES
         # ==========================================================
         bioCollapsibleButton = ctk.ctkCollapsibleButton()
-        bioCollapsibleButton.text = "2.1: Biological Configuration "
+        bioCollapsibleButton.text = "2.1: Biological Configuration"
         self.layout.addWidget(bioCollapsibleButton)
         bioFormLayout = qt.QFormLayout(bioCollapsibleButton)
 
@@ -340,14 +340,22 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # --- TABLA PURA DE ROLES (Qt) ---
         self.bio_table = qt.QTableWidget()
-        self.bio_table.setColumnCount(3)
-        self.bio_table.setHorizontalHeaderLabels(["Structure Name", "Role", "Overlap Priority"])
+        self.bio_table.setColumnCount(5)  # <-- CAMBIO A 5 COLUMNAS
+        self.bio_table.setHorizontalHeaderLabels(
+            ["Structure Name", "Role", "α/β Ratio (Gy)","Recovery (%)", "Overlap Priority"])  # <-- SE AGREGA ALFA/BETA
 
         # Estética de la tabla
-        self.bio_table.horizontalHeader().setStretchLastSection(True)
-        self.bio_table.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
         self.bio_table.verticalHeader().setVisible(False)
         self.bio_table.setMinimumHeight(180)
+
+        # Ajuste proporcional de las columnas para una mejor visualización clínica
+        header = self.bio_table.horizontalHeader()
+        header.setSectionResizeMode(0, qt.QHeaderView.Stretch)  # Nombre de la estructura (Se estira para nombres largos)
+        header.setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)  # Rol (Se ajusta al texto)
+        header.setSectionResizeMode(2, qt.QHeaderView.ResizeToContents)  # Alfa/Beta (Se ajusta a la caja numérica)
+        header.setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)  # Recuperación %
+        header.setSectionResizeMode(4, qt.QHeaderView.Stretch)  # Prioridad (Se estira para balancear la tabla)
+
         bioFormLayout.addRow(self.bio_table)
 
         # Conectamos el botón a nuestra nueva función
@@ -1398,21 +1406,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.util.showStatusMessage("All structures are now hidden")
 
     def onLoadStructuresForBiology(self):
-        # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
         self.resetResultsDisplay()
-        """Lee TODOS los sets de estructuras en la escena y genera la tabla solo con las visibles."""
-        # 1. Buscamos todos los nodos de segmentación en la escena en lugar de usar un solo selector
-        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
 
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
         if not segmentation_nodes:
             slicer.util.warningDisplay("No RTSTRUCTs found in the scene.")
             return
 
-        # Limpiamos la tabla en caso de que el usuario vuelva a presionar el botón
         self.bio_table.setRowCount(0)
         row = 0
 
-        # 2. Recorremos TODOS los sets de estructuras encontrados (Fijos, Móviles, etc.)
         for segmentation_node in segmentation_nodes:
             segmentation = segmentation_node.GetSegmentation()
             display_node = segmentation_node.GetDisplayNode()
@@ -1420,91 +1423,123 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if not display_node:
                 continue
 
-            # 3. Recorremos los órganos internos de este set específico
             for i in range(segmentation.GetNumberOfSegments()):
                 segment_id = segmentation.GetNthSegmentID(i)
 
-                # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
                 if display_node.GetSegmentVisibility(segment_id):
                     segment_name = segmentation.GetSegment(segment_id).GetName()
-
                     self.bio_table.insertRow(row)
 
-                    # Columna 0: Nombre de la estructura (Solo lectura)
+                    # Columna 0: Nombre de la estructura
                     name_item = qt.QTableWidgetItem(segment_name)
                     name_item.setFlags(name_item.flags() & ~qt.Qt.ItemIsEditable)
                     self.bio_table.setItem(row, 0, name_item)
 
-                    # Columna 1: Menú de Rol (OAR / Tumor)
+                    # Columna 1: Menú de Rol
                     role_combo = qt.QComboBox()
                     role_combo.addItems(["OAR", "Tumor"])
                     role_combo.setStyleSheet("background-color: white; color: black;")
                     self.bio_table.setCellWidget(row, 1, role_combo)
 
-                    # Columna 2: Menú de Prioridad
+                    # Columna 2: Valor Alfa/Beta
+                    alpha_beta_spinbox = qt.QDoubleSpinBox()
+                    alpha_beta_spinbox.setDecimals(1)
+                    alpha_beta_spinbox.setRange(1.0, 30.0)
+                    alpha_beta_spinbox.setSingleStep(0.5)
+                    alpha_beta_spinbox.setValue(3.0)
+                    alpha_beta_spinbox.setStyleSheet("background-color: white; color: black;")
+                    self.bio_table.setCellWidget(row, 2, alpha_beta_spinbox)
+
+                    # Columna 3: Recuperación (%) (NUEVO)
+                    recovery_spinbox = qt.QSpinBox()
+                    recovery_spinbox.setRange(0, 100)
+                    recovery_spinbox.setSingleStep(10)  # Saltos de 10%
+                    recovery_spinbox.setSuffix(" %")
+                    recovery_spinbox.setValue(0)  # Clínicamente conservador por defecto
+                    recovery_spinbox.setStyleSheet("background-color: white; color: black;")
+                    self.bio_table.setCellWidget(row, 3, recovery_spinbox)
+
+                    # Columna 4: Menú de Prioridad (Antes era la 3)
                     priority_combo = qt.QComboBox()
                     priority_combo.addItems(["OAR", "Tumor"])
                     priority_combo.setStyleSheet("background-color: #ecf0f1; color: black;")
-                    self.bio_table.setCellWidget(row, 2, priority_combo)
+                    self.bio_table.setCellWidget(row, 4, priority_combo)
 
-                    # Conexión de señales para los estilos
+                    # Conexión dinámica (Ahora enviamos 4 widgets)
                     role_combo.connect("currentTextChanged(QString)",
-                                       lambda text, r_combo=role_combo, p_combo=priority_combo: self.onRoleStyleUpdate(
-                                           text, r_combo, p_combo))
-
+                                       lambda text, r_combo=role_combo, p_combo=priority_combo,
+                                              ab_spin=alpha_beta_spinbox, rec_spin=recovery_spinbox:
+                                       self.onRoleStyleUpdate(text, r_combo, p_combo, ab_spin, rec_spin))
                     row += 1
 
         if row > 0:
+            # Ajustar el ancho de las columnas para que se vea estético
+            self.bio_table.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+            self.bio_table.horizontalHeader().setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)
+            self.bio_table.horizontalHeader().setSectionResizeMode(2, qt.QHeaderView.ResizeToContents)
+            self.bio_table.horizontalHeader().setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)
+            self.bio_table.horizontalHeader().setSectionResizeMode(4, qt.QHeaderView.ResizeToContents)
             slicer.util.showStatusMessage(f"Success: {row} structures loaded for biological setup.")
         else:
-            slicer.util.warningDisplay(
-                "No visible structures found. Please turn on the 'eye' icon for at least one structure in your panels.")
-    def onRoleStyleUpdate(self, text, r_combo, p_combo):
-        """Actualiza visualmente los menús de rol y prioridad basado en la selección."""
-        if text == "Tumor":
-            # 1. Pintamos el menú de Rol
-            r_combo.setStyleSheet(
-                "background-color: #fdf2e9; color: #d35400; font-weight: bold;")  # Naranja/Rojizo suave con negrita
+            slicer.util.warningDisplay("No visible structures found. Please turn on the 'eye' icon.")
 
-            # 2. Ajustamos y pintamos el menú de Prioridad del mismo color
+    def onRoleStyleUpdate(self, text, r_combo, p_combo, ab_spinbox, rec_spinbox):
+        """Actualiza estilos, valores alfa/beta, recuperación y prioridades."""
+        if text == "Tumor":
+            # Ajustes Rol y Alfa/Beta
+            r_combo.setStyleSheet("background-color: #fdf2e9; color: #d35400; font-weight: bold;")
+            ab_spinbox.setValue(10.0)
+            ab_spinbox.setStyleSheet("background-color: #fdf2e9; color: #d35400; font-weight: bold;")
+
+            # Seguridad: Forzar recuperación a 0% para el tumor y bloquear casilla
+            rec_spinbox.setValue(0)
+            rec_spinbox.setEnabled(False)
+            rec_spinbox.setStyleSheet("background-color: #ecf0f1; color: #7f8c8d;")  # Tono gris deshabilitado
+
+            # Ajustes Prioridad
             p_combo.setCurrentText("OAR")
             p_combo.setStyleSheet("background-color: #fdf2e9; color: #d35400;")
         else:
-            # 1. Volvemos al estilo estándar para el menú de Rol
+            # Ajustes Rol y Alfa/Beta
             r_combo.setStyleSheet("background-color: white; color: black; font-weight: normal;")
+            ab_spinbox.setValue(3.0)
+            ab_spinbox.setStyleSheet("background-color: white; color: black; font-weight: normal;")
 
-            # 2. Volvemos al estilo estándar para el menú de Prioridad
+            # Habilitar recuperación para OARs
+            rec_spinbox.setEnabled(True)
+            rec_spinbox.setStyleSheet("background-color: white; color: black;")
+
+            # Ajustes Prioridad
             p_combo.setCurrentText("OAR")
             p_combo.setStyleSheet("background-color: #ecf0f1; color: black;")
 
     def getBiologicalConfiguration(self):
-        """
-        Lee la tabla biológica fila por fila y extrae las configuraciones.
-        Retorna un diccionario estructurado con los roles y prioridades.
-        """
+        """Extrae la configuración biológica completa fila por fila."""
         bio_config = {}
 
-        # Recorremos todas las filas que existan en la tabla
         for row in range(self.bio_table.rowCount):
-
-            # 1. Extraemos el Nombre de la Estructura (Columna 0)
             name_item = self.bio_table.item(row, 0)
             if not name_item:
                 continue
             structure_name = name_item.text()
 
-            # 2. Extraemos el Rol seleccionado (Columna 1)
+            # Extraer variables de las celdas
             role_widget = self.bio_table.cellWidget(row, 1)
-            # Por seguridad, si por alguna razón falla el widget, asumimos 'OAR'
-            role_selected = role_widget.currentText if role_widget else "OAR"
+            ab_widget = self.bio_table.cellWidget(row, 2)
+            rec_widget = self.bio_table.cellWidget(row, 3)  # <-- Nueva extracción
+            priority_widget = self.bio_table.cellWidget(row, 4)
 
-            # 3. Extraemos la Prioridad seleccionada (Columna 2)
-            priority_widget = self.bio_table.cellWidget(row, 2)
+            # Extraer texto/valores de los widgets
+            role_selected = role_widget.currentText if role_widget else "OAR"
+            alpha_beta_val = ab_widget.value if ab_widget else 3.0
+            recovery_percent = rec_widget.value if rec_widget else 0  # <-- Porcentaje (0 a 100)
             priority_selected = priority_widget.currentText if priority_widget else "OAR"
 
-            # 4. Guardamos los datos en nuestro diccionario maestro
+            # Guardar en el diccionario maestro
             bio_config[structure_name] = {
                 "role": role_selected,
+                "alpha_beta": alpha_beta_val,
+                "recovery_percent": recovery_percent,
                 "priority": priority_selected
             }
 
