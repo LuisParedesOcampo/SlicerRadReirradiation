@@ -153,7 +153,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
         self.moving_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
 
-        # --- NUEVO: Panel Seguro de Pre-Alineación Manual ---
+        # ---  Panel Seguro de Pre-Alineación Manual ---
         self.preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
         self.preAlignCollapsibleButton.text = "1.2: Pre-Alignment, Image Registration and Dose resample "
         registrationFormLayout.addRow(self.preAlignCollapsibleButton)
@@ -264,6 +264,38 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Connect Register button to function
         self.registerButton.connect('clicked(bool)', self.onRegisterButton)
+        # =======================================================
+        #  RESULTADO DEL RESAMPLEO (Dosis para calcular)
+        # =======================================================
+        resampled_groupBox = qt.QGroupBox("Registered and Resampled Dose Volumes")
+        resampled_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        resampled_layout = qt.QFormLayout(resampled_groupBox)
+
+        self.dose_a_selector = slicer.qMRMLNodeComboBox()
+        self.dose_a_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.dose_a_selector.selectNodeUponCreation = True
+        self.dose_a_selector.addEnabled = False
+        self.dose_a_selector.removeEnabled = False
+        self.dose_a_selector.noneEnabled = False
+        self.dose_a_selector.showHidden = False
+        self.dose_a_selector.showChildNodeTypes = True
+        self.dose_a_selector.setMRMLScene(slicer.mrmlScene)
+        self.dose_a_selector.setToolTip("Verify the dose matrix for the Previous Radiation Course (Resampled).")
+        resampled_layout.addRow("RD Previous (Resampled): ", self.dose_a_selector)
+
+        self.dose_b_selector = slicer.qMRMLNodeComboBox()
+        self.dose_b_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.dose_b_selector.selectNodeUponCreation = True
+        self.dose_b_selector.addEnabled = False
+        self.dose_b_selector.removeEnabled = False
+        self.dose_b_selector.noneEnabled = False
+        self.dose_b_selector.showHidden = False
+        self.dose_b_selector.showChildNodeTypes = True
+        self.dose_b_selector.setMRMLScene(slicer.mrmlScene)
+        self.dose_b_selector.setToolTip("Verify the dose matrix for the Current Planned Course.")
+        resampled_layout.addRow("RD Planned (Current): ", self.dose_b_selector)
+
+        registrationFormLayout.addRow(resampled_groupBox)
 
         # ===========================================================================================================
         # PANEL 2: ESTRUCTURAS Y VISUALIZACIÓN
@@ -376,68 +408,19 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Conectamos el botón a nuestra nueva función
         self.load_bio_button.connect('clicked(bool)', self.onLoadStructuresForBiology)
-
-        # =========================================================================================================================================
-        # PANEL 3: REIRRADIATION ANALYSIS
-        # ========================================================================================================================================
+        # =========================================================================================================
+        # PANEL 3: EXECUTE EQD2 CALCULATION
+        # =========================================================================================================
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "3: Reirradiation Calculation Settings"
+        parametersCollapsibleButton.text = "3: Execute EQD2 Accumulation"
         self.layout.addWidget(parametersCollapsibleButton)
-
-        # Layout principal del panel
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # =======================================================
-        # GRUPO 1: VOLÚMENES DE DOSIS (INPUTS)
-        # =======================================================
-        doses_groupBox = qt.QGroupBox("3.1: Dose Volumes")
-        doses_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        doses_layout = qt.QFormLayout(doses_groupBox)
-
-        # Selector for Dose A (RT1)
-        self.dose_a_selector = slicer.qMRMLNodeComboBox()
-        self.dose_a_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.dose_a_selector.selectNodeUponCreation = True
-        self.dose_a_selector.addEnabled = False
-        self.dose_a_selector.removeEnabled = False
-        self.dose_a_selector.noneEnabled = False
-        self.dose_a_selector.showHidden = False
-        self.dose_a_selector.showChildNodeTypes = True
-        self.dose_a_selector.setMRMLScene(slicer.mrmlScene)
-        self.dose_a_selector.setToolTip("Select the dose matrix for the Previous Radiation Course (RT1).")
-        doses_layout.addRow("RD Previous (RT1) (Resampled) : ", self.dose_a_selector)
-
-        # Selector for Dose B (RT2)
-        self.dose_b_selector = slicer.qMRMLNodeComboBox()
-        self.dose_b_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.dose_b_selector.selectNodeUponCreation = True
-        self.dose_b_selector.addEnabled = False
-        self.dose_b_selector.removeEnabled = False
-        self.dose_b_selector.noneEnabled = False
-        self.dose_b_selector.showHidden = False
-        self.dose_b_selector.showChildNodeTypes = True
-        self.dose_b_selector.setMRMLScene(slicer.mrmlScene)
-        self.dose_b_selector.setToolTip("Select the dose matrix for the Planned Radiation Course (RT2).")
-        doses_layout.addRow("RD Planned (RT2): ", self.dose_b_selector)
-
-        # Añadimos el Grupo 1 al layout principal
-        parametersFormLayout.addRow(doses_groupBox)
-
-        # =======================================================
-        # GRUPO 3: CONFIGURACIÓN DE SALIDA
-        # =======================================================
-        recovery_groupBox = qt.QGroupBox("3.3: Output Configuration")
-        recovery_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        recovery_layout = qt.QFormLayout(recovery_groupBox)
-
-        # Output Volume Name
+        # Output Volume Name (Sin subgrupos, directo al layout)
         self.output_name_input = qt.QLineEdit()
         self.output_name_input.setPlaceholderText("Optional: Custom name for the new volume...")
         self.output_name_input.setToolTip("If you leave it blank, it will use the default name.")
-        recovery_layout.addRow("Output Dose Name: ", self.output_name_input)
-
-        # Añadimos el Grupo 3 al layout principal
-        parametersFormLayout.addRow(recovery_groupBox)
+        parametersFormLayout.addRow("Output Dose Name: ", self.output_name_input)
 
         # =======================================================
         # BOTÓN DE CÁLCULO MAESTRO
@@ -445,18 +428,20 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.applyButton = qt.QPushButton("Calculate Cumulative EQD2 Dose")
         self.applyButton.toolTip = "Execute the voxel-by-voxel BED/EQD2 accumulation."
         self.applyButton.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50; 
-                color: white; 
-                font-weight: bold; 
-                padding: 8px;
-                font-size: 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
+                    QPushButton {
+                        background-color: #4CAF50; 
+                        color: white; 
+                        font-weight: bold; 
+                        padding: 12px;
+                        font-size: 14px;
+                        border-radius: 6px;
+                        margin-top: 10px;
+                        margin-bottom: 5px;
+                    }
+                    QPushButton:hover {
+                        background-color: #45a049;
+                    }
+                """)
         parametersFormLayout.addRow(self.applyButton)
 
         # Connect button to function
@@ -2246,7 +2231,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print(f"ÉXITO Ninja: {total_fractions} fracciones inyectadas para '{dose_node.GetName()}'.")
 
         except Exception as e:
-            pass  # Silencio absoluto ante errores
+                pass  # Silencio absoluto ante errores
 
     def onExportPdfClicked(self):
         """Recopila los datos del análisis, genera una plantilla HTML robusta y la exporta como PDF nativo mediante Qt."""
@@ -2265,25 +2250,75 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.app.processEvents()
 
         # ==========================================
-        # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ (Tu código original)
+        # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ
         # ==========================================
+        import re  # Importamos la librería de expresiones regulares para extraer las fechas
+
         date_str = datetime.datetime.now().strftime("%B %d, %Y - %H:%M:%S")
 
-        # Nombres de archivos (Usando tus variables exactas)
         dose_a_node = self.dose_a_selector.currentNode() if hasattr(self, 'dose_a_selector') else None
         dose_b_node = self.dose_b_selector.currentNode() if hasattr(self, 'dose_b_selector') else None
 
         dose_a_name = dose_a_node.GetName() if dose_a_node else "N/A"
         dose_b_name = dose_b_node.GetName() if dose_b_node else "N/A"
 
-        # Intentar capturar el RTSTRUCT
         rtstruct_name = "N/A"
         if hasattr(self, 'struct_selector') and self.struct_selector.currentNode():
             rtstruct_name = self.struct_selector.currentNode().GetName()
 
-        registration_status = "Manual Alignment / Resampled" if "_Resampled" in dose_a_name or "_Resampled" in dose_b_name else "Native DICOM Coordinates"
+        # Identificar qué tipo de registro se utilizó validando el nombre del volumen
+        is_resampled = "_Resampled" in dose_a_name or "_Resampled" in dose_b_name
 
-        # Extracción de Paciente desde la dosis planificada (RT2)
+        # Leer el estado exacto de las casillas de la interfaz
+        is_manual_ui = self.manual_only_checkbox.isChecked() if hasattr(self, 'manual_only_checkbox') else False
+        is_affine = self.affine_checkbox.isChecked() if hasattr(self, 'affine_checkbox') else False
+        is_deformable = self.deformable_checkbox.isChecked() if hasattr(self, 'deformable_checkbox') else False
+
+        # Lógica de asignación para el reporte PDF
+        if is_resampled:
+            if is_manual_ui:
+                registration_status = "Manual Alignment & Resampled"
+            else:
+                if is_deformable:
+                    registration_status = "Auto-Registration (Deformable B-Spline) & Resampled"
+                elif is_affine:
+                    registration_status = "Auto-Registration (Affine) & Resampled"
+                else:
+                    registration_status = "Auto-Registration (Rigid) & Resampled"
+        else:
+            registration_status = "Native DICOM Coordinates"
+
+        # --- NUEVA LÓGICA: EXTRACCIÓN DE FECHAS Y CÁLCULO DE TIEMPO ---
+        date_rt1_str = "Unknown Date"
+        date_rt2_str = "Unknown Date"
+        elapsed_time_str = "N/A"
+
+        # Extraemos las fechas de los títulos de tus paneles usando expresiones regulares
+        if hasattr(self, 'rt1_groupBox'):
+            match = re.search(r'\[\s*Date:\s*(.*?)\s*\]', self.rt1_groupBox.title)
+            if match: date_rt1_str = match.group(1).strip()
+
+        if hasattr(self, 'rt2_groupBox'):
+            match = re.search(r'\[\s*Date:\s*(.*?)\s*\]', self.rt2_groupBox.title)
+            if match: date_rt2_str = match.group(1).strip()
+
+        # Calculamos los meses/días transcurridos automáticamente
+        try:
+            if date_rt1_str != "Unknown Date" and date_rt2_str != "Unknown Date":
+                d1 = datetime.datetime.strptime(date_rt1_str, "%Y-%m-%d")
+                d2 = datetime.datetime.strptime(date_rt2_str, "%Y-%m-%d")
+
+                # Usamos abs() para asegurar que la resta siempre de positiva sin importar el orden
+                delta = abs((d2 - d1).days)
+                months = delta // 30
+                if months > 0:
+                    elapsed_time_str = f"{months} months ({delta} days)"
+                else:
+                    elapsed_time_str = f"{delta} days"
+        except Exception as e:
+            pass  # Si falla el parseo de fechas por algún motivo, se queda en "N/A"
+
+        # Extracción del nombre y ID del paciente
         patient_name = "Unknown Patient"
         patient_id = "Unknown ID"
         if dose_b_node:
@@ -2300,21 +2335,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             except:
                 pass
 
-        # Parámetros Biológicos
-        frac_a = self.fractions_a_spinbox.value
-        frac_b = self.fractions_b_spinbox.value
-        ab_oar = self.ab_spinbox.value
-        ab_tumor = self.ab_tumor_spinbox.value
-
-        # Recuperación Tisular
-        recovery_enabled = self.recovery_checkbox.isChecked()
-        recovery_months = self.months_spinbox.value if recovery_enabled else "N/A"
-        recovery_factor_str = "Applied" if recovery_enabled else "None (100% BED combination)"
+        # Parámetros de Fraccionamiento
+        frac_a = self.fractions_a_spinbox.value if hasattr(self, 'fractions_a_spinbox') else "N/A"
+        frac_b = self.fractions_b_spinbox.value if hasattr(self, 'fractions_b_spinbox') else "N/A"
 
         # Restricción Dmax
-        dmax_constraint = self.dmax_volume_spinbox.value
+        dmax_constraint = self.dmax_volume_spinbox.value if hasattr(self, 'dmax_volume_spinbox') else 0.03
 
-        # Recopilar datos de la tabla de métricas (Tu bucle funcional + Nuevas columnas)
+        # Extraer configuración biológica estructura por estructura
+        bio_config = self.getBiologicalConfiguration()
+
         table_html = ""
         rows = self.metrics_table.rowCount
         for row in range(rows):
@@ -2328,15 +2358,21 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             if not struct_name: continue
 
-            # Lógica extraída de tu tabla biológica
-            is_target = "PTV" in struct_name.upper() or "GTV" in struct_name.upper() or "CTV" in struct_name.upper()
-            assigned_role = "Target" if is_target else "OAR"
-            assigned_ab = f"{ab_tumor} Gy" if is_target else f"{ab_oar} Gy"
+            # Buscar los parámetros biológicos exactos de esta estructura
+            if struct_name in bio_config:
+                assigned_role = bio_config[struct_name]["role"]
+                assigned_ab = f"{bio_config[struct_name]['alpha_beta']} Gy"
+                assigned_rec = f"{bio_config[struct_name]['recovery_percent']} %"
+            else:
+                # Respaldo por si la estructura no estaba en la tabla biológica
+                assigned_role = "Unspecified"
+                assigned_ab = "3.0 Gy (Default)"
+                assigned_rec = "0 % (Default)"
 
-            table_html += f"<tr><td>{struct_name}</td><td>{assigned_role}</td><td>{assigned_ab}</td><td>{dmax_val}</td><td>{mean_val}</td></tr>"
+            table_html += f"<tr><td>{struct_name}</td><td>{assigned_role}</td><td>{assigned_ab}</td><td>{assigned_rec}</td><td>{dmax_val}</td><td>{mean_val}</td></tr>"
 
         # ==========================================
-        # 3. CONSTRUCCIÓN DE LA PLANTILLA HTML (Tu estilo seguro original)
+        # 3. CONSTRUCCIÓN DE LA PLANTILLA HTML
         # ==========================================
         html_content = f"""
         <html>
@@ -2345,7 +2381,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
                 h1 {{ color: #2c3e50; text-align: center; border-bottom: 2px solid #2980b9; padding-bottom: 10px; }}
                 h2 {{ color: #2980b9; margin-top: 20px; border-bottom: 1px solid #bdc3c7; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em; }}
                 th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
                 th {{ background-color: #f2f2f2; color: #333; font-weight: bold; }}
                 .meta-info {{ font-size: 0.9em; color: #7f8c8d; text-align: right; }}
@@ -2361,28 +2397,31 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 <tr><td>Patient Name</td><td>{patient_name}</td></tr>
                 <tr><td>Patient ID</td><td>{patient_id}</td></tr>
                 <tr><td>Previous Dose (RT1)</td><td>{dose_a_name}</td></tr>
+                <tr><td>Date of Previous Treatment</td><td>{date_rt1_str}</td></tr>
                 <tr><td>Planned Dose (RT2)</td><td>{dose_b_name}</td></tr>
+                <tr><td>Date of Current Treatment</td><td>{date_rt2_str}</td></tr>
+                <tr style="background-color: #f8f9fa; font-weight: bold;">
+                    <td>Elapsed Time Between Treatments</td><td>{elapsed_time_str}</td>
+                </tr>
                 <tr><td>Structure Set (RTSTRUCT)</td><td>{rtstruct_name}</td></tr>
                 <tr><td>Registration Status</td><td>{registration_status}</td></tr>
             </table>
 
-            <h2>2. Biological & Fractionation Parameters</h2>
+            <h2>2. Fractionation Parameters</h2>
             <table>
                 <tr><th>Parameter</th><th>Value</th></tr>
-                <tr><td>Fractions (RT1 - Previous)</td><td>{frac_a}</td></tr>
-                <tr><td>Fractions (RT2 - Planned)</td><td>{frac_b}</td></tr>
-                <tr><td>Time-based Recovery Enabled</td><td>{'Yes' if recovery_enabled else 'No'}</td></tr>
-                <tr><td>Time Interval (Months)</td><td>{recovery_months}</td></tr>
-                <tr><td>Discount Factor Applied</td><td>{recovery_factor_str}</td></tr>
+                <tr><td>Fractions Delivered (RT1)</td><td>{frac_a}</td></tr>
+                <tr><td>Fractions Planned (RT2)</td><td>{frac_b}</td></tr>
             </table>
 
-            <h2>3. EQD2 Cumulative Dosimetric Metrics</h2>
+            <h2>3. EQD2 Cumulative Dosimetric Metrics & Biology</h2>
             <p><strong>DMax Volume Constraint:</strong> {dmax_constraint} cc</p>
             <table>
                 <tr>
                     <th>Structure Name</th>
                     <th>Biological Role</th>
-                    <th>&alpha;/&beta; Used</th>
+                    <th>&alpha;/&beta; Ratio</th>
+                    <th>Recovery Applied</th>
                     <th>DMax (Gy)</th>
                     <th>Mean Dose (Gy)</th>
                 </tr>
@@ -2391,8 +2430,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             <br><br>
             <p style="text-align:center; font-size: 0.8em; color: #7f8c8d;">
-                * This report is generated by RadReirradiation for 3D Slicer.<br>
-                * Please review all EQD2 and BED summations clinically before use.
+    * This report is generated by RadReirradiation for 3D Slicer.<br>
+    * Voxel-based radiobiology and overlap priorities were applied during EQD2 accumulation.<br>
+    * Please review all EQD2 and BED summations clinically before use.
             </p>
         </body>
         </html>
@@ -2409,7 +2449,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             printer.setOutputFormat(qt.QPrinter.PdfFormat)
             printer.setOutputFileName(save_path)
 
-            # Ajustes de página
             printer.setPageSize(qt.QPageSize(qt.QPageSize.A4))
             printer.setPageMargins(qt.QMarginsF(15, 15, 15, 15), qt.QPageLayout.Millimeter)
 
@@ -2420,6 +2459,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to generate PDF:\n{str(e)}")
+
+
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
