@@ -2657,8 +2657,6 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         # Ordenamos las estructuras: Prioridad 'OAR' (0) se pinta primero, 'Tumor' (1) se pinta encima
         sorted_structures = sorted(bio_config.items(), key=lambda item: 0 if item[1]["priority"] == "OAR" else 1)
 
-        temp_labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "Temp_Bio_Mask")
-
         for structure_name, config in sorted_structures:
             ab_val = config["alpha_beta"]
             rec_percent = config["recovery_percent"] / 100.0
@@ -2667,13 +2665,17 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             seg_node, segment_id = self._getSegmentAndNode(structure_name)
 
             if seg_node and segment_id:
+                # NUEVO: Creamos un lienzo en blanco exclusivo para ESTA estructura
+                temp_labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode",
+                                                                   f"Temp_Bio_Mask_{structure_name}")
+
                 # Proyección geométrica
                 segment_ids_array = vtk.vtkStringArray()
                 segment_ids_array.InsertNextValue(segment_id)
                 slicer.modules.segmentations.logic().ExportSegmentsToLabelmapNode(seg_node, segment_ids_array,
                                                                                   temp_labelmap, dose_a_node)
 
-                # Máscara booleana del órgano actual
+                # Máscara booleana aislada y exacta del órgano actual
                 mask = slicer.util.arrayFromVolume(temp_labelmap) > 0
 
                 if priority == "OAR":
@@ -2682,23 +2684,21 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
                     alpha_beta_map[blank_mask] = ab_val
                     recovery_map[blank_mask] = rec_percent
 
-                    # Escenario B: Solapamiento. El vóxel ya fue pintado por otro OAR previo.
-                    # MÁXIMA SEGURIDAD: Solo sobreescribimos si el nuevo α/β es MENOR.
+                    # Escenario B: Solapamiento real con otro órgano ya pintado.
                     overlap_mask = mask & (alpha_beta_map != -1.0)
                     if np.any(overlap_mask):
                         lower_ab_mask = overlap_mask & (ab_val < alpha_beta_map)
                         alpha_beta_map[lower_ab_mask] = ab_val
                         recovery_map[lower_ab_mask] = rec_percent
                 else:
-                    # Lógica para Tumores: Al ser el blanco clínico, sobreescriben cualquier OAR sin preguntar.
+                    # Lógica para Tumores: Sobreescriben su área exacta sin afectar al resto
                     alpha_beta_map[mask] = ab_val
                     recovery_map[mask] = rec_percent
 
-        # Limpiamos la memoria del nodo temporal
-        slicer.mrmlScene.RemoveNode(temp_labelmap)
+                # NUEVO: Destruimos el lienzo inmediatamente para no contaminar la siguiente iteración
+                slicer.mrmlScene.RemoveNode(temp_labelmap)
 
-        # Llenado final de seguridad Todo el tejido de fondo que nunca fue contorneado
-        # (sigue en -1.0) asume los valores estándar de tejido sano (α/β=3.0, Rec=0%)
+        # Llenado final de seguridad: Todo el tejido de fondo asume los valores estándar de tejido sano
         unclassified_mask = (alpha_beta_map == -1.0)
         alpha_beta_map[unclassified_mask] = 3.0
         recovery_map[unclassified_mask] = 0.0
@@ -2709,7 +2709,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         slicer.util.showStatusMessage("Calculating Voxel-Based EQD2...")
         slicer.app.processEvents()
 
-        # Protegemos contra divisiones por cero en caso de algún error extraño
+        # Protegemos contra divisiones por cero
         alpha_beta_map = np.clip(alpha_beta_map, 0.1, 30.0)
 
         d_a = array_a / fx_a
@@ -2718,13 +2718,13 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         bed_a = array_a * (1.0 + (d_a / alpha_beta_map))
         bed_b = array_b * (1.0 + (d_b / alpha_beta_map))
 
-        # Calculamos el BED efectivo restando la recuperación vóxel a vóxel
+        # Calculamos el BED efectivo restando la recuperación vóxel a vóxel (Corregido el operador '-')
         effective_bed_a = bed_a * (1.0 - recovery_map)
 
         # Sumamos el BED viejo con descuento + el BED nuevo
         bed_total = effective_bed_a + bed_b
 
-        # Convertimos de BED a EQD2 usando el mapa espacial de Alpha/Beta
+        # Convertimos de BED a EQD2
         eqd2_total = bed_total * (alpha_beta_map / (2.0 + alpha_beta_map))
 
         # --- PASO D: Retorno a Slicer ---
