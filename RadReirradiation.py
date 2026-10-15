@@ -56,18 +56,35 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.layout.addWidget(registrationCollapsibleButton)
 
         registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
+        # =======================================================
+        # BOTONES DE CARGA DE DATOS (Panel 1)
+        # =======================================================
+        load_buttons_layout = qt.QHBoxLayout()
 
-        # =======================================================
-        # BOTÓN MÁGICO: AUTO-DETECCIÓN Y AISLAMIENTO
-        # =======================================================
-        self.auto_detect_button = qt.QPushButton("Select Studies and Auto-match (by date)")
+        # Botón Principal (Automático) - Mantenemos la lógica intacta
+        self.auto_detect_button = qt.QPushButton("Load Data: Auto-match (by date)")
         self.auto_detect_button.setStyleSheet(
             "background-color: #8e44ad; color: white; padding: 5px; font-weight: bold;")
         self.auto_detect_button.setToolTip(
-            "Escanea la jerarquía DICOM, separa automáticamente el estudio antiguo del nuevo y bloquea el cruce de datos.")
-        registrationFormLayout.addRow(self.auto_detect_button)
+            "It scans the DICOM hierarchy, automatically separates the old study from the new one, and prevents data cross-contamination.")
 
+        # Botón Secundario (Manual Override)
+        self.manual_load_button = qt.QPushButton("Load Data: Manual Only")
+        self.manual_load_button.setStyleSheet(
+            "background-color: #e67e22; color: white; padding: 5px; font-weight: bold;")
+        self.manual_load_button.setToolTip(
+            "Unlock the selectors to manually assign each volume (CT, Dose, Structures) per patient.")
+
+        # Añadimos los botones al layout horizontal (Proporción 70% Automático / 30% Manual)
+        load_buttons_layout.addWidget(self.auto_detect_button, 7)
+        load_buttons_layout.addWidget(self.manual_load_button, 3)
+
+        # Añadimos el layout horizontal al formulario
+        registrationFormLayout.addRow(load_buttons_layout)
+
+        # Conexiones
         self.auto_detect_button.connect('clicked(bool)', self.onAutoDetectStudies)
+        self.manual_load_button.connect('clicked(bool)', self.onManualLoadClicked)
 
         # =======================================================
         # GRUPO 1: DATOS PREVIOS (MÓVILES) -> Etiqueta "PREV"
@@ -816,6 +833,112 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         node_count = selector.nodeCount()
         if node_count > 0:
             selector.setCurrentNodeIndex(node_count - 1)
+
+    def onManualLoadClicked(self):
+        """Habilita la asignación manual validando previamente al paciente."""
+        import qt
+        import slicer
+        import vtk
+
+        slicer.util.showStatusMessage("Initializing Manual Load Mode...")
+        slicer.app.processEvents()
+
+        # =======================================================
+        # PASO 0: LIMPIEZA GLOBAL Y REINICIO DE UI
+        # =======================================================
+        all_scene_nodes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")) + list(
+            slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+
+        for node in all_scene_nodes:
+            node.RemoveAttribute("RadReirradiationRole")
+            node.RemoveAttribute("VolumeType")
+
+        if hasattr(self, '_setSelectorsMode'):
+            self._setSelectorsMode("STRICT")
+
+        self.rt1_groupBox.setTitle("RT1: Previous Treatment (Moving)")
+        self.rt2_groupBox.setTitle("RT2: Current Plan (Fixed)")
+
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        all_volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+
+        # =======================================================
+        # PASO 1: Identificar pacientes en la escena
+        # =======================================================
+        patients_dict = {}
+        for volume in all_volumes:
+            item_id = shNode.GetItemByDataNode(volume)
+            if item_id:
+                patient_id = shNode.GetItemAncestorAtLevel(item_id,
+                                                           slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelPatient())
+                if patient_id and patient_id != 0:
+                    if patient_id not in patients_dict:
+                        patients_dict[patient_id] = shNode.GetItemName(patient_id)
+
+        if not patients_dict:
+            slicer.util.warningDisplay("No DICOM patients found in the scene.")
+            return
+
+        target_patient_id = None
+
+        # =======================================================
+        # PASO 2: Resolver selección si hay múltiples pacientes
+        # =======================================================
+        if len(patients_dict) > 1:
+            patient_names = list(patients_dict.values())
+            selected_name = qt.QInputDialog.getItem(None, "Manual Mode", "Select patient to load manually:",
+                                                    patient_names, 0, False)
+            if not selected_name: return
+            for pid, pname in patients_dict.items():
+                if pname == selected_name:
+                    target_patient_id = pid
+                    break
+        else:
+            target_patient_id = list(patients_dict.keys())[0]
+
+        # =======================================================
+        # PASO 3: Etiquetar recursivamente todos los nodos del paciente
+        # =======================================================
+        children = vtk.vtkIdList()
+        shNode.GetItemChildren(target_patient_id, children, True)
+
+        for i in range(children.GetNumberOfIds()):
+            child_id = children.GetId(i)
+            data_node = shNode.GetItemDataNode(child_id)
+            if data_node:
+                # Si es un volumen (CT o DOSIS)
+                if data_node.IsA("vtkMRMLScalarVolumeNode"):
+                    node_name = data_node.GetName().upper()
+                    if "DOSE" in node_name:
+                        data_node.SetAttribute("VolumeType", "DOSE")
+                    else:
+                        data_node.SetAttribute("VolumeType", "CT")
+                # Si es una segmentación
+                elif data_node.IsA("vtkMRMLSegmentationNode"):
+                    data_node.SetAttribute("VolumeType", "RS")
+
+        # =======================================================
+        # PASO 4: Desbloquear Interfaz (Filtrado Seguro)
+        # =======================================================
+        # Activamos el modo manual que filtra solo por "VolumeType"
+        if hasattr(self, '_setSelectorsMode'):
+            self._setSelectorsMode("MANUAL")
+
+        patient_name = patients_dict[target_patient_id]
+
+        # Limpiamos los selectores para que el usuario asigne desde cero
+        self.moving_ct_selector.setCurrentNode(None)
+        self.moving_dose_selector.setCurrentNode(None)
+        self.moving_rtstruct_selector.setCurrentNode(None)
+        self.fixed_ct_selector.setCurrentNode(None)
+        self.fixed_dose_selector.setCurrentNode(None)
+        self.fixed_rtstruct_selector.setCurrentNode(None)
+
+        # Actualizamos los títulos para dejar claro el estado de la UI
+        self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ {patient_name} | MANUAL ]")
+        self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | MANUAL ]")
+
+        slicer.util.showStatusMessage(f"Manual mode unlocked for: {patient_name}. Please assign files.")
 
     def onCenterButtonClicked(self):
 
