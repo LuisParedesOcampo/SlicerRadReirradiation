@@ -50,12 +50,11 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # =========================================================================================================
         # PANEL 1: IMAGE REGISTRATION
         # ==========================================================================================================
-        registrationCollapsibleButton = ctk.ctkCollapsibleButton()
-        registrationCollapsibleButton.text = "1: Load Reirradiation Data"
-        registrationCollapsibleButton.collapsed = False
-        self.layout.addWidget(registrationCollapsibleButton)
-
-        registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
+        loadDataCollapsibleButton = ctk.ctkCollapsibleButton()
+        loadDataCollapsibleButton.text = "1: Load Reirradiation Data"
+        loadDataCollapsibleButton.collapsed = False
+        self.layout.addWidget(loadDataCollapsibleButton)
+        loadDataFormLayout = qt.QFormLayout(loadDataCollapsibleButton)
         # =======================================================
         # BOTONES DE CARGA DE DATOS (Panel 1)
         # =======================================================
@@ -69,7 +68,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "It scans the DICOM hierarchy, automatically separates the old study from the new one, and prevents data cross-contamination.")
 
         # Botón Secundario (Manual Override)
-        self.manual_load_button = qt.QPushButton("Load Data: Manual Only")
+        self.manual_load_button = qt.QPushButton("Load Data: Manual-match")
         self.manual_load_button.setStyleSheet(
             "background-color: #e67e22; color: white; padding: 5px; font-weight: bold;")
         self.manual_load_button.setToolTip(
@@ -80,7 +79,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         load_buttons_layout.addWidget(self.manual_load_button, 3)
 
         # Añadimos el layout horizontal al formulario
-        registrationFormLayout.addRow(load_buttons_layout)
+        loadDataFormLayout.addRow(load_buttons_layout)
 
         # Conexiones
         self.auto_detect_button.connect('clicked(bool)', self.onAutoDetectStudies)
@@ -124,7 +123,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fractions_a_spinbox.setToolTip("Number of fractions delivered in the previous treatment.")
         rt1_layout.addRow("Fractions Delivered: ", self.fractions_a_spinbox)
 
-        registrationFormLayout.addRow(self.rt1_groupBox)
+        loadDataFormLayout.addRow(self.rt1_groupBox)
 
         # =======================================================
         # GRUPO 2: DATOS ACTUALES (FIJOS) -> Etiqueta "CURR"
@@ -164,7 +163,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fractions_b_spinbox.setToolTip("Number of fractions planned for the current treatment.")
         rt2_layout.addRow("Fractions Planned: ", self.fractions_b_spinbox)
 
-        registrationFormLayout.addRow(self.rt2_groupBox)
+        loadDataFormLayout.addRow(self.rt2_groupBox)
 
         # Conexiones para que el visualizador del Panel 2 se actualice solo
         self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
@@ -173,10 +172,10 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #==================================================================================================================
         #        Pre-Alignment, Image Registration and Dose resample
         #==================================================================================================================
-        self.preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
-        self.preAlignCollapsibleButton.text = "1.2: Pre-Alignment, Image Registration and Dose resample "
-        registrationFormLayout.addRow(self.preAlignCollapsibleButton)
-        preAlignLayout = qt.QFormLayout(self.preAlignCollapsibleButton)
+        preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
+        preAlignCollapsibleButton.text = "2: Pre-Alignment, Image Registration and Dose resample "
+        self.layout.addWidget(preAlignCollapsibleButton)
+        preAlignLayout = qt.QFormLayout(preAlignCollapsibleButton)
 
         # Botón de teletransporte
         self.centerButton = qt.QPushButton("Auto-Center CTs")
@@ -265,7 +264,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.affine_checkbox.setChecked(False)
         self.affine_checkbox.setToolTip(
             "It adds 12 degrees of freedom. Ideal for skull or calibration differences between CTs, but it requires a lot of RAM.")
-        registrationFormLayout.addRow(self.affine_checkbox)
+        preAlignLayout.addRow(self.affine_checkbox)
 
         # Casilla para Registro Deformable
         self.deformable_checkbox = qt.QCheckBox(
@@ -273,13 +272,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.deformable_checkbox.setChecked(False)
         self.deformable_checkbox.setToolTip(
             "First calculate Rigid, then apply Deformable. This may take several minutes.")
-        registrationFormLayout.addRow(self.deformable_checkbox)
+        preAlignLayout.addRow(self.deformable_checkbox)
 
         # Botón Azul de Registro
         self.registerButton = qt.QPushButton("Auto-Registration and Dose Resample")
         self.registerButton.toolTip = "It performs an automatic hard registration and adjusts the dose grid.."
         self.registerButton.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
-        registrationFormLayout.addRow(self.registerButton)
+        preAlignLayout.addRow(self.registerButton)
 
         # Connect Register button to function
         self.registerButton.connect('clicked(bool)', self.onRegisterButton)
@@ -314,13 +313,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dose_b_selector.setToolTip("Verify the dose matrix for the Current Planned Course.")
         resampled_layout.addRow("RD Planned (Current): ", self.dose_b_selector)
 
-        registrationFormLayout.addRow(resampled_groupBox)
+        preAlignLayout.addRow(resampled_groupBox)
 
         # ===========================================================================================================
-        # PANEL 2: ESTRUCTURAS Y VISUALIZACIÓN
+        # PANEL 3: ESTRUCTURAS Y VISUALIZACIÓN
         # ===========================================================================================================
         structuresCollapsibleButton = ctk.ctkCollapsibleButton()
-        structuresCollapsibleButton.text = "2: Structures & Visualization"
+        structuresCollapsibleButton.text = "3: Structures Visualization, Biological Configuration and EQD2 Calculations"
         self.layout.addWidget(structuresCollapsibleButton)
         structuresFormLayout = qt.QFormLayout(structuresCollapsibleButton)
 
@@ -341,7 +340,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # =======================================================
         self.rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationUse", "True")
 
-        structuresFormLayout.addRow("RT2 Structures: ", self.rtstruct_selector)
+        structuresFormLayout.addRow("Select Structures set: ", self.rtstruct_selector)
 
         # --- CONTENEDOR HORIZONTAL PARA LOS BOTONES ---
         visibilityButtonsLayout = qt.QHBoxLayout()
@@ -379,7 +378,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 2.1: CONFIGURACIÓN BIOLÓGICA Y ASIGNACIÓN DE ROLES
         # ==========================================================
         bioCollapsibleButton = ctk.ctkCollapsibleButton()
-        bioCollapsibleButton.text = "2.1: Biological Configuration"
+        bioCollapsibleButton.text = "3.1: Biological Configuration"
         self.layout.addWidget(bioCollapsibleButton)
         bioFormLayout = qt.QFormLayout(bioCollapsibleButton)
 
@@ -428,10 +427,10 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Conectamos el botón a nuestra nueva función
         self.load_bio_button.connect('clicked(bool)', self.onLoadStructuresForBiology)
         # =========================================================================================================
-        # PANEL 3: EXECUTE EQD2 CALCULATION
+        # PANEL 3.2: EXECUTE EQD2 CALCULATION
         # =========================================================================================================
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "3: Execute EQD2 Accumulation"
+        parametersCollapsibleButton.text = "3.2: Execute EQD2 Accumulation"
         self.layout.addWidget(parametersCollapsibleButton)
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
@@ -470,7 +469,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================
 
         metricsCollapsibleButton = ctk.ctkCollapsibleButton()
-        metricsCollapsibleButton.text = "4: EQD2 Metrics and DVH"
+        metricsCollapsibleButton.text = "4: EQD2 Metrics, DVH, Export Dicom and PDF Report"
         self.layout.addWidget(metricsCollapsibleButton)
         metricsFormLayout = qt.QFormLayout(metricsCollapsibleButton)
 
