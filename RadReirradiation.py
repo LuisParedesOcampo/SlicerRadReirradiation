@@ -170,7 +170,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
         self.moving_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
 
-        # ---  Panel Seguro de Pre-Alineación Manual ---
+        #==================================================================================================================
+        #        Pre-Alignment, Image Registration and Dose resample
+        #==================================================================================================================
         self.preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
         self.preAlignCollapsibleButton.text = "1.2: Pre-Alignment, Image Registration and Dose resample "
         registrationFormLayout.addRow(self.preAlignCollapsibleButton)
@@ -749,6 +751,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._autoSelectLatestNode(self.fixed_dose_selector)
         self._autoSelectLatestNode(self.fixed_rtstruct_selector)
 
+        # Cargar set de estructuras en el selector automaticamente
+        self.autoSelectLatestRTStruct()
         slicer.util.showStatusMessage(f"Data isolated for patient: {patients_dict[target_patient_id]}")
 
     # ==========================================================
@@ -938,6 +942,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ {patient_name} | MANUAL ]")
         self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | MANUAL ]")
 
+        # Cargar set de estructuras en el selector automaticamente
+        self.autoSelectLatestRTStruct()
         slicer.util.showStatusMessage(f"Manual mode unlocked for: {patient_name}. Please assign files.")
 
     def onCenterButtonClicked(self):
@@ -1434,6 +1440,24 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 display_node.SetAllSegmentsVisibility(False)
 
         slicer.util.showStatusMessage("All structures are now hidden")
+
+    def autoSelectLatestRTStruct(self):
+        """
+        Sincroniza el selector del Panel 2 con el RTSTRUCT del plan actual (Fijo)
+        determinado por el Panel 1, asegurando que los menús desplegables
+        estén actualizados mediante processEvents.
+        """
+        import slicer
+
+        # 1. Forzamos a la interfaz de Slicer a procesar las nuevas etiquetas de paciente
+        slicer.app.processEvents()
+
+        # 2. Tomamos el nodo que el Panel 1 ya identificó inteligentemente como el plan "CURRENT"
+        curr_node = self.fixed_rtstruct_selector.currentNode() if hasattr(self, 'fixed_rtstruct_selector') else None
+
+        # 3. Lo asignamos al Panel 2
+        if curr_node and hasattr(self, 'rtstruct_selector'):
+            self.rtstruct_selector.setCurrentNode(curr_node)
 
     def onLoadStructuresForBiology(self):
         self.resetResultsDisplay()
