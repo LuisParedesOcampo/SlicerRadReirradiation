@@ -123,6 +123,48 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fractions_a_spinbox.setToolTip("Number of fractions delivered in the previous treatment.")
         rt1_layout.addRow("Fractions Delivered: ", self.fractions_a_spinbox)
 
+        # =======================================================
+        # BOOST SECUENCIAL RT1 (Oculto por defecto)
+        # =======================================================
+        self.boost_a_checkbox = qt.QCheckBox("Add Sequential Boost (Shares CT and RTSTRUCT)")
+        self.boost_a_checkbox.setStyleSheet("color: #2980b9; font-weight: bold; margin-top: 5px;")
+        rt1_layout.addRow(self.boost_a_checkbox)
+
+        self.moving_boost_dose_selector = slicer.qMRMLNodeComboBox()
+        self.moving_boost_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.moving_boost_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "DOSE")
+        self.moving_boost_dose_selector.selectNodeUponCreation = True
+        self.moving_boost_dose_selector.noneEnabled = True
+        self.moving_boost_dose_selector.showHidden = False
+        self.moving_boost_dose_selector.showChildNodeTypes = True
+        self.moving_boost_dose_selector.setMRMLScene(slicer.mrmlScene)
+
+        self.boost_a_dose_label = qt.QLabel("Boost Dose (RTDOSE):")
+        rt1_layout.addRow(self.boost_a_dose_label, self.moving_boost_dose_selector)
+
+        self.fractions_boost_a_spinbox = qt.QSpinBox()
+        self.fractions_boost_a_spinbox.setValue(17)
+        self.fractions_boost_a_spinbox.setMaximum(100)
+        self.fractions_boost_a_spinbox.setStyleSheet("background-color: #ebf5fb; color: black; font-weight: normal;")
+        self.boost_a_fx_label = qt.QLabel("Boost Fractions Delivered:")
+        rt1_layout.addRow(self.boost_a_fx_label, self.fractions_boost_a_spinbox)
+
+        # Estado inicial oculto
+        self.boost_a_dose_label.hide()
+        self.moving_boost_dose_selector.hide()
+        self.boost_a_fx_label.hide()
+        self.fractions_boost_a_spinbox.hide()
+
+        def toggleBoostA(is_checked):
+            self.boost_a_dose_label.setVisible(is_checked)
+            self.moving_boost_dose_selector.setVisible(is_checked)
+            self.boost_a_fx_label.setVisible(is_checked)
+            self.fractions_boost_a_spinbox.setVisible(is_checked)
+            if not is_checked:
+                self.moving_boost_dose_selector.setCurrentNode(None)
+
+        self.boost_a_checkbox.connect('toggled(bool)', toggleBoostA)
+
         loadDataFormLayout.addRow(self.rt1_groupBox)
 
         # =======================================================
@@ -162,6 +204,48 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fractions_b_spinbox.setStyleSheet("background-color: #fdf2e9; color: black; font-weight: normal;")
         self.fractions_b_spinbox.setToolTip("Number of fractions planned for the current treatment.")
         rt2_layout.addRow("Fractions Planned: ", self.fractions_b_spinbox)
+
+        # =======================================================
+        # BOOST SECUENCIAL RT2 (Oculto por defecto)
+        # =======================================================
+        self.boost_b_checkbox = qt.QCheckBox("Add Sequential Boost (Shares CT and RTSTRUCT)")
+        self.boost_b_checkbox.setStyleSheet("color: #27ae60; font-weight: bold; margin-top: 5px;")
+        rt2_layout.addRow(self.boost_b_checkbox)
+
+        self.fixed_boost_dose_selector = slicer.qMRMLNodeComboBox()
+        self.fixed_boost_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.fixed_boost_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "DOSE")
+        self.fixed_boost_dose_selector.selectNodeUponCreation = True
+        self.fixed_boost_dose_selector.noneEnabled = True
+        self.fixed_boost_dose_selector.showHidden = False
+        self.fixed_boost_dose_selector.showChildNodeTypes = True
+        self.fixed_boost_dose_selector.setMRMLScene(slicer.mrmlScene)
+
+        self.boost_b_dose_label = qt.QLabel("Boost Dose (RTDOSE):")
+        rt2_layout.addRow(self.boost_b_dose_label, self.fixed_boost_dose_selector)
+
+        self.fractions_boost_b_spinbox = qt.QSpinBox()
+        self.fractions_boost_b_spinbox.setValue(10)
+        self.fractions_boost_b_spinbox.setMaximum(100)
+        self.fractions_boost_b_spinbox.setStyleSheet("background-color: #e9f7ef; color: black; font-weight: normal;")
+        self.boost_b_fx_label = qt.QLabel("Boost Fractions Planned:")
+        rt2_layout.addRow(self.boost_b_fx_label, self.fractions_boost_b_spinbox)
+
+        # Estado inicial oculto
+        self.boost_b_dose_label.hide()
+        self.fixed_boost_dose_selector.hide()
+        self.boost_b_fx_label.hide()
+        self.fractions_boost_b_spinbox.hide()
+
+        def toggleBoostB(is_checked):
+            self.boost_b_dose_label.setVisible(is_checked)
+            self.fixed_boost_dose_selector.setVisible(is_checked)
+            self.boost_b_fx_label.setVisible(is_checked)
+            self.fractions_boost_b_spinbox.setVisible(is_checked)
+            if not is_checked:
+                self.fixed_boost_dose_selector.setCurrentNode(None)
+
+        self.boost_b_checkbox.connect('toggled(bool)', toggleBoostB)
 
         loadDataFormLayout.addRow(self.rt2_groupBox)
 
@@ -1179,13 +1263,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.util.showStatusMessage("Validating biological parameters... Please wait.")
 
             # ==========================================================
-            # 2. RECOLECCIÓN DE TABLA BIOLÓGICA (Panel 2.1)
+            # 2. RECOLECCIÓN DE TABLA BIOLÓGICA (Panel 3.1)
             # ==========================================================
             current_bio_setup = self.getBiologicalConfiguration()
 
             if not current_bio_setup:
                 slicer.util.warningDisplay(
-                    "The biological table is empty. Please load and configure the structures first in Panel 2.1.",
+                    "The biological table is empty. Please load and configure the structures first.",
                     windowTitle="Validation Error")
                 return
 
@@ -1197,31 +1281,43 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             print("------------------------------------------------\n")
 
             # ==========================================================
-            # 3. RECOLECCIÓN DE VARIABLES (Panel 3.1 y 3.2)
+            # 3. RECOLECCIÓN DE VARIABLES (Base y Boost)
             # ==========================================================
-            # Nota: Los campos globales de α/β y recuperación fueron eliminados aquí
             dose_a_node = self.dose_a_selector.currentNode()
             dose_b_node = self.dose_b_selector.currentNode()
             fx_a = self.fractions_a_spinbox.value
             fx_b = self.fractions_b_spinbox.value
+
+            # NUEVO: Extracción segura de los parámetros del Boost Secuencial
+            boost_a_node = self.moving_boost_dose_selector.currentNode() if hasattr(self,
+                                                                                    'moving_boost_dose_selector') else None
+            fx_boost_a = self.fractions_boost_a_spinbox.value if hasattr(self, 'fractions_boost_a_spinbox') else 0
+
+            boost_b_node = self.fixed_boost_dose_selector.currentNode() if hasattr(self,
+                                                                                   'fixed_boost_dose_selector') else None
+            fx_boost_b = self.fractions_boost_b_spinbox.value if hasattr(self, 'fractions_boost_b_spinbox') else 0
 
             custom_name = ""
             if hasattr(self, 'output_name_input'):
                 custom_name = self.output_name_input.text.strip()
 
             # ==========================================================
-            # 4. LLAMADA AL MOTOR MATEMÁTICO (El cerebro en la clase Logic)
+            # 4. LLAMADA AL MOTOR MATEMÁTICO
             # ==========================================================
             slicer.util.showStatusMessage("Calculating spatial EQD2 with NumPy and SimpleITK...")
 
-            # Llamamos a la función actualizada que creamos en el paso anterior
+            # Llamamos a la función actualizada con los parámetros del boost
             resultado = self.logic.procesarDosis(
                 dose_a_node=dose_a_node,
                 dose_b_node=dose_b_node,
                 fx_a=fx_a,
                 fx_b=fx_b,
                 bio_config=current_bio_setup,
-                custom_name=custom_name
+                custom_name=custom_name,
+                boost_a_node=boost_a_node,
+                fx_boost_a=fx_boost_a,
+                boost_b_node=boost_b_node,
+                fx_boost_b=fx_boost_b
             )
 
             # ==========================================================
@@ -1239,7 +1335,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except Exception as e:
             slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
             import traceback
-            traceback.print_exc()  # Esto imprime el error exacto en la consola por si falla algo
+            traceback.print_exc()
 
         finally:
             # Al terminar (o si hay error), volvemos a habilitar el botón y cerrar la ventana
@@ -2767,9 +2863,11 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
                 return node, segment_id
         return None, None
 
-    def procesarDosis(self, dose_a_node, dose_b_node, fx_a, fx_b, bio_config, custom_name=""):
+    def procesarDosis(self, dose_a_node, dose_b_node, fx_a, fx_b, bio_config, custom_name="", boost_a_node=None,
+                      fx_boost_a=0, boost_b_node=None, fx_boost_b=0):
         import numpy as np
         import vtk
+        import slicer
 
         # --- PASO A: Validaciones Clínicas ---
         if not dose_a_node or not dose_b_node:
@@ -2777,7 +2875,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         if fx_a <= 0 or fx_b <= 0:
             raise ValueError("The number of fractions must be greater than zero.")
         if not bio_config:
-            raise ValueError("Biological configuration is empty. Please generate the table in Panel 2.1.")
+            raise ValueError("Biological configuration is empty. Please generate the table in Panel 3.1.")
 
         # --- PASO B: Extracción de Vóxeles Base ---
         array_a = slicer.util.arrayFromVolume(dose_a_node)
@@ -2786,6 +2884,16 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         if array_a.shape != array_b.shape:
             raise ValueError(
                 f"The Matrix dimensions do not match.\nDose RT1: {array_a.shape}\nDose RT2: {array_b.shape}\nYou must register and resample the images beforehand.")
+
+        # ==========================================================
+        # Capturar el fondo actual (El CT) antes de que Slicer lo cambie
+        # ==========================================================
+        fondo_original = None
+        layoutManager = slicer.app.layoutManager()
+        if layoutManager:
+            red_logic = layoutManager.sliceWidget("Red").sliceLogic()
+            if red_logic.GetBackgroundLayer():
+                fondo_original = red_logic.GetBackgroundLayer().GetVolumeNode()
 
         # ==========================================================
         # FASE 1: CREACIÓN DE LOS MAPAS BIOLÓGICOS (Lienzos)
@@ -2811,7 +2919,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             seg_node, segment_id = self._getSegmentAndNode(structure_name)
 
             if seg_node and segment_id:
-                # NUEVO: Creamos un lienzo en blanco exclusivo para ESTA estructura
+                # Creamos un lienzo en blanco exclusivo para ESTA estructura
                 temp_labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode",
                                                                    f"Temp_Bio_Mask_{structure_name}")
 
@@ -2841,7 +2949,7 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
                     alpha_beta_map[mask] = ab_val
                     recovery_map[mask] = rec_percent
 
-                # NUEVO: Destruimos el lienzo inmediatamente para no contaminar la siguiente iteración
+                # Destruimos el lienzo inmediatamente para no contaminar la siguiente iteración
                 slicer.mrmlScene.RemoveNode(temp_labelmap)
 
         # Llenado final de seguridad: Todo el tejido de fondo asume los valores estándar de tejido sano
@@ -2850,27 +2958,71 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         recovery_map[unclassified_mask] = 0.0
 
         # ==========================================================
-        # FASE 3: MATEMÁTICA RADIOBIOLÓGICA (VECTORIZADA)
+        # FASE 3: MATEMÁTICA RADIOBIOLÓGICA CON BOOST SECUENCIAL
         # ==========================================================
-        slicer.util.showStatusMessage("Calculating Voxel-Based EQD2...")
+        slicer.util.showStatusMessage("Calculating Voxel-Based EQD2 with Boost Support...")
         slicer.app.processEvents()
+
+        # Función interna para remuestrear el Boost al tamaño exacto del plan Base
+        def resample_boost_to_base(boost_node, base_node, name):
+            resampled_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", name)
+            params = {
+                "inputVolume": boost_node.GetID(),
+                "referenceVolume": base_node.GetID(),
+                "outputVolume": resampled_node.GetID(),
+                "interpolationMode": "Linear",  # Interpolación lineal para dosis
+                "pixelType": "float"
+            }
+            # Ejecutamos el módulo en modo sincrónico (espera a que termine)
+            slicer.cli.runSync(slicer.modules.brainsresample, None, params)
+            return resampled_node
 
         # Protegemos contra divisiones por cero
         alpha_beta_map = np.clip(alpha_beta_map, 0.1, 30.0)
 
-        d_a = array_a / fx_a
-        d_b = array_b / fx_b
+        # --- 1. HISTORIA: RT1 (Base + Boost) ---
+        d_a_base = array_a / fx_a
+        bed_a_total = array_a * (1.0 + (d_a_base / alpha_beta_map))
 
-        bed_a = array_a * (1.0 + (d_a / alpha_beta_map))
-        bed_b = array_b * (1.0 + (d_b / alpha_beta_map))
+        if boost_a_node and fx_boost_a > 0:
+            slicer.util.showStatusMessage("Resampling RT1 Boost grid to match RT1 Base...")
+            slicer.app.processEvents()
 
-        # Calculamos el BED efectivo restando la recuperación vóxel a vóxel (Corregido el operador '-')
-        effective_bed_a = bed_a * (1.0 - recovery_map)
+            temp_boost_a = resample_boost_to_base(boost_a_node, dose_a_node, "Temp_Boost_A")
+            array_boost_a = slicer.util.arrayFromVolume(temp_boost_a)
 
-        # Sumamos el BED viejo con descuento + el BED nuevo
-        bed_total = effective_bed_a + bed_b
+            d_a_boost = array_boost_a / fx_boost_a
+            bed_boost_a = array_boost_a * (1.0 + (d_a_boost / alpha_beta_map))
+            bed_a_total = bed_a_total + bed_boost_a
 
-        # Convertimos de BED a EQD2
+            # Limpieza de memoria
+            slicer.mrmlScene.RemoveNode(temp_boost_a)
+
+        # Calculamos el BED efectivo restando la recuperación vóxel a vóxel
+        effective_bed_a = bed_a_total * (1.0 - recovery_map)
+
+        # --- 2. PRESENTE: RT2 (Base + Boost) ---
+        d_b_base = array_b / fx_b
+        bed_b_total = array_b * (1.0 + (d_b_base / alpha_beta_map))
+
+        if boost_b_node and fx_boost_b > 0:
+            slicer.util.showStatusMessage("Resampling RT2 Boost grid to match RT2 Base...")
+            slicer.app.processEvents()
+
+            temp_boost_b = resample_boost_to_base(boost_b_node, dose_b_node, "Temp_Boost_B")
+            array_boost_b = slicer.util.arrayFromVolume(temp_boost_b)
+
+            d_b_boost = array_boost_b / fx_boost_b
+            bed_boost_b = array_boost_b * (1.0 + (d_b_boost / alpha_beta_map))
+            bed_b_total = bed_b_total + bed_boost_b
+
+            # Limpieza de memoria
+            slicer.mrmlScene.RemoveNode(temp_boost_b)
+
+        # --- 3. CONSOLIDACIÓN FINAL ---
+        bed_total = effective_bed_a + bed_b_total
+
+        # Convertimos de BED consolidado a EQD2
         eqd2_total = bed_total * (alpha_beta_map / (2.0 + alpha_beta_map))
 
         # --- PASO D: Retorno a Slicer ---
@@ -2935,7 +3087,15 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         display_node.SetLowerThreshold(umbral_minimo)
         display_node.SetUpperThreshold(dosis_absoluta_max)
 
-        slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
+        # ==========================================================
+        # CORRECCIÓN DE CAPAS: Restaurar el CT original al fondo
+        # ==========================================================
+        if fondo_original:
+            # Colocamos explícitamente el CT original en el fondo y el EQD2 al frente
+            slicer.util.setSliceViewerLayers(background=fondo_original, foreground=eqd2_node, foregroundOpacity=0.4)
+        else:
+            # Respaldo por si no había nada de fondo
+            slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
 
         try:
             color_legend = slicer.modules.colors.logic().AddDefaultColorLegendDisplayNode(eqd2_node)
