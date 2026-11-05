@@ -143,7 +143,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         rt1_layout.addRow(self.boost_a_dose_label, self.moving_boost_dose_selector)
 
         self.fractions_boost_a_spinbox = qt.QSpinBox()
-        self.fractions_boost_a_spinbox.setValue(17)
+        self.fractions_boost_a_spinbox.setValue(0)
         self.fractions_boost_a_spinbox.setMaximum(100)
         self.fractions_boost_a_spinbox.setStyleSheet("background-color: #ebf5fb; color: black; font-weight: normal;")
         self.boost_a_fx_label = qt.QLabel("Boost Fractions Delivered:")
@@ -225,7 +225,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         rt2_layout.addRow(self.boost_b_dose_label, self.fixed_boost_dose_selector)
 
         self.fractions_boost_b_spinbox = qt.QSpinBox()
-        self.fractions_boost_b_spinbox.setValue(10)
+        self.fractions_boost_b_spinbox.setValue(0)
         self.fractions_boost_b_spinbox.setMaximum(100)
         self.fractions_boost_b_spinbox.setStyleSheet("background-color: #e9f7ef; color: black; font-weight: normal;")
         self.boost_b_fx_label = qt.QLabel("Boost Fractions Planned:")
@@ -366,6 +366,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Connect Register button to function
         self.registerButton.connect('clicked(bool)', self.onRegisterButton)
+
         # =======================================================
         #  RESULTADO DEL RESAMPLEO (Dosis para calcular)
         # =======================================================
@@ -398,7 +399,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         resampled_layout.addRow("RD Planned (Current): ", self.dose_b_selector)
 
         preAlignLayout.addRow(resampled_groupBox)
-
         # ===========================================================================================================
         # PANEL 3: ESTRUCTURAS Y VISUALIZACIÓN
         # ===========================================================================================================
@@ -708,6 +708,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             target_patient_id = list(patients_dict.keys())[0]
 
+        # Guardamos el nombre del paciente para usarlo en la UI
+        patient_name = patients_dict[target_patient_id]
+
         # =======================================================
         # PASO 3: Recolectar estudios SOLO del paciente seleccionado
         # =======================================================
@@ -726,14 +729,12 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             studies_dict[study_item_id] = study_date
 
         # =======================================================
-        # PASO 3.1: CASO ESPECIAL - UN SOLO ESTUDIO (Braquiterapia / Consolidado)
+        # PASO 3.1: CASO ESPECIAL - UN SOLO ESTUDIO
         # =======================================================
         if len(studies_dict) < 2:
-            patient_name = patients_dict[target_patient_id]
             single_study_id = list(studies_dict.keys())[0]
             single_date = studies_dict[single_study_id]
 
-            # Preguntamos al usuario si desea activar el modo manual
             manual_override = slicer.util.confirmOkCancelDisplay(
                 f"Only one study was detected. ({single_date}) for the patient/data set '{patient_name}'.\n\n"
                 "This occurs with exports or plan consolidations on the same date..\n\n"
@@ -742,15 +743,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
 
             if manual_override:
-                # Cambiamos las reglas de la UI y etiquetamos los nodos
                 self._tagNodesForManualMode(shNode, single_study_id)
                 self._setSelectorsMode("MANUAL")
 
-                # Formateamos el título para avisar que está en modo manual
                 fmt_date = f"{single_date[:4]}-{single_date[4:6]}-{single_date[6:]}" if single_date and len(
                     single_date) == 8 else "Unknown"
-                self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {fmt_date} | MANUAL ]")
-                self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {fmt_date} | MANUAL ]")
+
+                # NUEVO: Título con Nombre + Fecha para un solo estudio
+                self.rt1_groupBox.setTitle(
+                    f"RT1: Previous Treatment (Moving)  [ {patient_name} | Date: {fmt_date} | MANUAL ]")
+                self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | Date: {fmt_date} | MANUAL ]")
 
                 slicer.util.showStatusMessage("Manual selection mode unlocked. Please assign the files..")
             return
@@ -814,30 +816,56 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             prev_study_id, prev_date_raw = sorted_studies[0]
             curr_study_id, curr_date_raw = sorted_studies[-1]
 
-        # =======================================================
-        # PASO 4: Ordenar, Etiquetar y Asignar
-        # =======================================================
-        prev_date_str = format_dicom_date(prev_date_raw)
-        curr_date_str = format_dicom_date(curr_date_raw)
+            # =======================================================
+            # PASO 4: Ordenar, Etiquetar y Asignar
+            # =======================================================
+            prev_date_str = format_dicom_date(prev_date_raw)
+            curr_date_str = format_dicom_date(curr_date_raw)
 
-        self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {prev_date_str} ]")
-        self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {curr_date_str} ]")
+            self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ {patient_name} | Date: {prev_date_str} ]")
+            self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | Date: {curr_date_str} ]")
 
-        self._tagNodesInStudy(shNode, prev_study_id, "PREV")
-        self._tagNodesInStudy(shNode, curr_study_id, "CURR")
+            self._tagNodesInStudy(shNode, prev_study_id, "PREV")
+            self._tagNodesInStudy(shNode, curr_study_id, "CURR")
 
-        self._autoSelectLatestNode(self.moving_ct_selector)
-        self._autoSelectLatestNode(self.moving_dose_selector)
-        self._autoSelectLatestNode(self.moving_rtstruct_selector)
+            # Asignación de RT1 (Previo)
+            self._autoSelectLatestNode(self.moving_ct_selector)
+            self._autoSelectDoseNode(self.moving_dose_selector, "PREVIOUS (RT1)")  # <-- Motor de seguridad
+            self._autoSelectLatestNode(self.moving_rtstruct_selector)
 
-        self._autoSelectLatestNode(self.fixed_ct_selector)
-        self._autoSelectLatestNode(self.fixed_dose_selector)
-        self._autoSelectLatestNode(self.fixed_rtstruct_selector)
+            # Asignación de RT2 (Actual)
+            self._autoSelectLatestNode(self.fixed_ct_selector)
+            self._autoSelectDoseNode(self.fixed_dose_selector, "CURRENT (RT2)")  # <-- Motor de seguridad
+            self._autoSelectLatestNode(self.fixed_rtstruct_selector)
 
-        # Cargar set de estructuras en el selector automaticamente
-        self.autoSelectLatestRTStruct()
-        slicer.util.showStatusMessage(f"Data isolated for patient: {patients_dict[target_patient_id]}")
+            self.autoSelectLatestRTStruct()
+            slicer.util.showStatusMessage(f"Data isolated for patient: {patient_name}")
+    #===============================================================================================================
+    def _autoSelectDoseNode(self, selector, study_type):
+        """
+        Regla de seguridad clínica (Fail-Safe):
+        Asigna la dosis automáticamente si hay solo 1. Si hay múltiples (Boost),
+        fuerza la selección manual para evitar intercambios accidentales.
+        """
+        import slicer
+        node_count = selector.nodeCount()
 
+        if node_count == 1:
+            # Solo hay un plan, lo asignamos con seguridad
+            selector.setCurrentNodeIndex(0)
+        elif node_count > 1:
+            # Hay un plan base y un boost (o más). Bloqueamos la auto-asignación.
+            selector.setCurrentNode(None)
+
+            # Alerta al usuario
+            slicer.util.warningDisplay(
+                f"Attention: Detected {node_count} RTDOSE files in {study_type}.\n\n"
+                "To ensure clinical safety, the algorithm will NOT automatically assign the dose.\n"
+                "Please open the menu and manually select which one is the Base Dose and which one is the Boost.",
+                windowTitle="Safety Validation: Multiple Doses"
+            )
+        else:
+            selector.setCurrentNode(None)
     # ==========================================================
     # FUNCIONES AUXILIARES PARA EL MODO MANUAL INTELIGENTE
     # ==========================================================
@@ -895,7 +923,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     data_node.SetAttribute("VolumeType", "RS")
 
     def _tagNodesInStudy(self, shNode, study_item_id, role_prefix):
-        """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT, CURR_DOSE, PREV_RS)"""
+        """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT) Y la etiqueta para los Boosts."""
         children = vtk.vtkIdList()
         shNode.GetItemChildren(study_item_id, children, True)
 
@@ -908,12 +936,15 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     node_name = data_node.GetName().upper()
                     if "DOSE" in node_name:
                         data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_DOSE")
+                        data_node.SetAttribute("VolumeType", "DOSE")  # <-- FIX: Necesario para el Boost
                     else:
                         data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_CT")
+                        data_node.SetAttribute("VolumeType", "CT")  # <-- FIX: Etiqueta de respaldo
 
                 # 2. Si es una estructura (RTSTRUCT)
                 elif data_node.IsA("vtkMRMLSegmentationNode"):
                     data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_RS")
+                    data_node.SetAttribute("VolumeType", "RS")  # <-- FIX: Etiqueta de respaldo
 
     def _autoSelectLatestNode(self, selector):
         """Obliga al selector a escoger el último elemento de la lista (suele ser el más reciente o la iteración final)."""
@@ -1288,13 +1319,11 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             fx_a = self.fractions_a_spinbox.value
             fx_b = self.fractions_b_spinbox.value
 
-            # NUEVO: Extracción segura de los parámetros del Boost Secuencial
-            boost_a_node = self.moving_boost_dose_selector.currentNode() if hasattr(self,
-                                                                                    'moving_boost_dose_selector') else None
+            # NUEVO: Extracción silenciosa de los Boosts desde la memoria interna
+            boost_a_node = getattr(self, '_hidden_boost_a_node', None)
             fx_boost_a = self.fractions_boost_a_spinbox.value if hasattr(self, 'fractions_boost_a_spinbox') else 0
 
-            boost_b_node = self.fixed_boost_dose_selector.currentNode() if hasattr(self,
-                                                                                   'fixed_boost_dose_selector') else None
+            boost_b_node = getattr(self, '_hidden_boost_b_node', None)
             fx_boost_b = self.fractions_boost_b_spinbox.value if hasattr(self, 'fractions_boost_b_spinbox') else 0
 
             custom_name = ""
@@ -1372,6 +1401,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         fixed_rtstruct = self.fixed_rtstruct_selector.currentNode()
 
         # =======================================================
+        # 0. NUEVO: LECTURA DEL BOOST SECUENCIAL (Si está activo)
+        # =======================================================
+        boost_rt1_node = None
+        if hasattr(self, 'moving_boost_dose_selector') and hasattr(self, 'boost_a_checkbox'):
+            if self.boost_a_checkbox.isChecked():
+                boost_rt1_node = self.moving_boost_dose_selector.currentNode()
+
+        # =======================================================
         # 1. CACHÉ DE ESTADO DE UI (Protección contra el refresco)
         # =======================================================
         estructura_visualizacion_activa = self.rtstruct_selector.currentNode()
@@ -1408,18 +1445,26 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 slicer.util.showStatusMessage("Running Rigid Registration...")
 
             # =======================================================
-            # 2. LLAMAR A LA LÓGICA (obtenemos dosis y matrix de de transformacion)
+            # 2. LLAMAR A LA LÓGICA (obtenemos dosis, matriz y boost)
             # =======================================================
-            aligned_dose_node, transform_node = self.logic.runFastRegistration(
-                fixed_ct, moving_ct, moving_dose, fixed_dose,
-                use_deformable, use_affine, self.manual_transform_node, use_manual_only
+            # ACTUALIZADO: Ahora recibe el boost y devuelve 3 variables
+            aligned_dose_node, transform_node, aligned_boost_node = self.logic.runFastRegistration(
+                fixed_ct=fixed_ct,
+                moving_ct=moving_ct,
+                moving_dose=moving_dose,
+                fixed_dose=fixed_dose,
+                use_deformable=use_deformable,
+                use_affine=use_affine,
+                manual_transform=self.manual_transform_node,
+                use_manual_only=use_manual_only,
+                moving_boost_dose=boost_rt1_node
             )
 
             if not aligned_dose_node:
                 return  # Si falló algo en la lógica, paramos.
 
             # =======================================================
-            # 2.5 NUEVO: ALINEAR, DIFERENCIAR Y RENOMBRAR ESTRUCTURAS MÓVILES
+            # 2.5 ALINEAR, DIFERENCIAR Y RENOMBRAR ESTRUCTURAS MÓVILES
             # =======================================================
             moving_rtstruct = self.moving_rtstruct_selector.currentNode()
 
@@ -1453,10 +1498,18 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     moving_rtstruct.SetName(parent_name + "_REGISTERED")
 
             # =======================================================
-            # 3. MAGIA UX: Asignación al Paso 2
+            # 3. MAGIA UX: Asignación al Paso 2 (Panel Resampled)
             # =======================================================
             self.dose_a_selector.setCurrentNode(aligned_dose_node)
             self.dose_b_selector.setCurrentNode(fixed_dose)
+
+            # NUEVO: Guardamos los nodos de boost remuestreados en la memoria interna (Invisibles en UI)
+            self._hidden_boost_a_node = aligned_boost_node
+
+            self._hidden_boost_b_node = None
+            if hasattr(self, 'fixed_boost_dose_selector') and hasattr(self, 'boost_b_checkbox'):
+                if self.boost_b_checkbox.isChecked():
+                    self._hidden_boost_b_node = self.fixed_boost_dose_selector.currentNode()
 
             # Restaurar la estructura que el usuario estaba visualizando
             if estructura_visualizacion_activa:
@@ -1464,12 +1517,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             slicer.util.showStatusMessage("Registration and Dose resampling completed!")
             slicer.util.infoDisplay(
-                "Successful alignment.\n\nLook for the new Dose volume with the suffix '_Resampled' in your Base Dose (RT1) list to perform the calculation.",
+                "Successful alignment.\n\nLook for the new Dose volumes with the suffix '_Resampled' in your Base Dose (RT1) list to perform the calculation.",
                 windowTitle="RadReirradiation FastReg")
 
         except Exception as e:
             slicer.util.errorDisplay(f"Error during image registration:\n{str(e)}",
                                      windowTitle="RadReirradiation Error")
+
 
     def onRTStructSelected(self, node):
         """Conecta las estructuras a la tabla usando la visualización nativa de SlicerRT"""
@@ -2712,13 +2766,11 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
     def runFastRegistration(self, fixed_ct, moving_ct, moving_dose, fixed_dose, use_deformable=False, use_affine=False,
-                            manual_transform=None, use_manual_only=False):
+                            manual_transform=None, use_manual_only=False, moving_boost_dose=None):
         # ==========================================================
         # UX: INICIAR VENTANA DE CARGA Y CURSOR DE ESPERA
         # ==========================================================
-        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)  # Cambia el ratón a reloj de arena
-
-        # Creamos una barra de progreso "infinita" (maximum=0)
+        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
         progress = slicer.util.createProgressDialog(
             parent=slicer.util.mainWindow(),
             labelText="Calculating Image Registration......\nPlease wait, Slicer will appear frozen for a couple of minutes.",
@@ -2726,67 +2778,51 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             value=0, maximum=0
         )
         progress.show()
-        slicer.app.processEvents()  # Vital: Fuerza a Slicer a dibujar la ventana antes de congelarse
+        slicer.app.processEvents()
+
         try:
             # ==========================================================
-            # EL BYPASS: SI NO ES MODO MANUAL, EJECUTAMOS BRAINSFit
+            # 1 AL 6: EJECUTAR MOTOR DE REGISTRO (BRAINSFit)
             # ==========================================================
             final_transform = None
-            # Detectamos si el CT está enganchado al nodo de transformación
             is_manual_active = (manual_transform is not None) and (
                         moving_ct.GetParentTransformNode() == manual_transform)
 
             if not use_manual_only:
-
-
-                # 1. Crear el "recipiente" donde se guardará el resultado matemático de la fusión
                 transform_name = f"Transform_{moving_ct.GetName()}_to_{fixed_ct.GetName()}"
                 final_transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode", transform_name)
 
-                # 2. Configurar el tipo de transformación dinámicamente según la interfaz
-                fases_registro = ["Rigid"]  # Rígido siempre es obligatorio como base
-
+                fases_registro = ["Rigid"]
                 if use_affine:
                     fases_registro.append("Affine")
-
                 if use_deformable:
                     fases_registro.append("BSpline")
 
-                # Unir las palabras con comas (Ej: "Rigid,BSpline" si Affine está apagado)
                 t_types = ",".join(fases_registro)
-
                 tasa_muestreo = 0.01 if use_deformable else 0.02
 
-                # 3. Diccionario de Parámetros de BRAINSFit con "Balance Clínico"
                 parameters = {
                     "fixedVolume": fixed_ct.GetID(),
                     "movingVolume": moving_ct.GetID(),
                     "transformType": t_types,
                     "maskProcessingMode": "NOMASK",
-                    "samplingPercentage": tasa_muestreo,  # 2% de los píxeles (Estándar comercial para velocidad/precisión)
-                    "numberOfIterations": 500,  # Límite de intentos para evitar ciclos infinitos
-                    "minimumStepLength": 0.005,  # Detenerse temprano si el "match" óseo ya es perfecto
+                    "samplingPercentage": tasa_muestreo,
+                    "numberOfIterations": 500,
+                    "minimumStepLength": 0.005,
                 }
 
-                # 4. El Puente: ¿El usuario ajustó las barras manuales?
-                # Si el usuario movió las barras, inyectamos esa matriz inicial sin duplicarla.
-                # Si no, usamos el centrado geométrico automático.
                 if is_manual_active:
                     parameters["initialTransform"] = manual_transform.GetID()
                     parameters["initializeTransformMode"] = "Off"
                 else:
                     parameters["initializeTransformMode"] = "useGeometryAlign"
 
-                # 5. Decirle al motor de registro DÓNDE GUARDAR el resultado
                 if use_deformable:
                     parameters["bsplineTransform"] = final_transform.GetID()
                     parameters["splineGridSize"] = [5, 5, 5]
                 else:
                     parameters["linearTransform"] = final_transform.GetID()
 
-                # ==========================================================
-                # 6. EJECUTAR EL MOTOR DE REGISTRO DE IMÁGENES (BRAINSFit)
-                # ==========================================================
                 brainsFit = slicer.modules.brainsfit
                 cliNode = slicer.cli.runSync(brainsFit, None, parameters)
 
@@ -2794,64 +2830,85 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
                     raise ValueError("The image registration engine (BRAINSFit) failed.")
 
             # ==========================================================
-            # 7. MOVER LA DOSIS ANTIGUA (BRAINSResample)
-            # (ESTO SE EJECUTA SIEMPRE, YA SEA MANUAL O AUTOMÁTICO)
+            # 7. MOVER LA DOSIS BASE (BRAINSResample)
             # ==========================================================
-            # Preparar un volumen clonado vacío para recibir la nueva dosis deformada
-            output_dose_name = f"{moving_dose.GetName()}_Resampled"
-            volumesLogic = slicer.modules.volumes.logic()
+            if moving_boost_dose:
+                output_dose_name = f"{moving_dose.GetName()}_With_Boost_Resampled"
+            else:
+                output_dose_name = f"{moving_dose.GetName()}_Resampled"
 
+            volumesLogic = slicer.modules.volumes.logic()
             reference_volume = fixed_dose if fixed_dose else fixed_ct
 
             outputDose = volumesLogic.CloneVolume(slicer.mrmlScene, reference_volume, output_dose_name)
             outputDose.SetAttribute("DICOM.Modality", "RTDOSE")
 
-            # Configurar el motor de re-muestreo pasándole el final_transform obtenido arriba
             resample_params = {
                 "inputVolume": moving_dose.GetID(),
                 "referenceVolume": reference_volume.GetID(),
                 "outputVolume": outputDose.GetID(),
-              #  "warpTransform": final_transform.GetID(),  # Aplicar el mismo movimiento de los huesos a la dosis
                 "interpolationMode": "Linear",
                 "pixelType": "float"
             }
 
-            # INYECCIÓN MATEMÁTICA: Si se usó Auto-Registro, le pasamos el cálculo final
-            # Si se eligió Solo Manual, le pasamos los movimientos de las barras directamente a la Dosis
             if not use_manual_only and final_transform:
                 resample_params["warpTransform"] = final_transform.GetID()
             elif use_manual_only and is_manual_active:
                 resample_params["warpTransform"] = manual_transform.GetID()
 
             cliNodeResample = slicer.cli.runSync(slicer.modules.brainsresample, None, resample_params)
-
             if cliNodeResample.GetStatus() & cliNodeResample.ErrorsMask:
                 raise ValueError("The Dose resample (BRAINSResample) failed.")
 
             # ==========================================================
+            # 7.5. MOVER LA DOSIS BOOST SI EXISTE (El mismo movimiento)
+            # ==========================================================
+            outputBoostDose = None
+            if moving_boost_dose:
+                boost_name = f"{moving_boost_dose.GetName()}_Resampled"
+                outputBoostDose = volumesLogic.CloneVolume(slicer.mrmlScene, reference_volume, boost_name)
+                outputBoostDose.SetAttribute("DICOM.Modality", "RTDOSE")
+
+                resample_boost_params = {
+                    "inputVolume": moving_boost_dose.GetID(),
+                    "referenceVolume": reference_volume.GetID(),
+                    "outputVolume": outputBoostDose.GetID(),
+                    "interpolationMode": "Linear",
+                    "pixelType": "float"
+                }
+
+                # Aplicamos exactamente la misma matriz de deformación
+                if not use_manual_only and final_transform:
+                    resample_boost_params["warpTransform"] = final_transform.GetID()
+                elif use_manual_only and is_manual_active:
+                    resample_boost_params["warpTransform"] = manual_transform.GetID()
+
+                cliNodeBoost = slicer.cli.runSync(slicer.modules.brainsresample, None, resample_boost_params)
+                if cliNodeBoost.GetStatus() & cliNodeBoost.ErrorsMask:
+                    raise ValueError("The Boost Dose resample failed.")
+
+            # ==========================================================
             # 8. ACTUALIZAR LA PANTALLA
             # ==========================================================
-            # Enganchar el TAC Antiguo a la transformación final para que el usuario vea el resultado
             if not use_manual_only and final_transform:
                 moving_ct.SetAndObserveTransformNodeID(final_transform.GetID())
 
+            # Colocamos las imágenes en los visores
             slicer.util.setSliceViewerLayers(background=fixed_ct, foreground=moving_ct, foregroundOpacity=0.5)
 
+            # Forzar a Slicer a centrar la cámara y ajustar el zoom automáticamente
+            slicer.util.resetSliceViews()
+
             # ==========================================================
-            # 9. RETORNAR RESULTADOS A LA INTERFAZ (Dosis y Matriz)
+            # 9. RETORNAR RESULTADOS (Dosis Base, Matriz y Boost)
             # ==========================================================
-            # Evaluamos qué matriz de movimiento se usó realmente
-            # (la automática de BRAINSFit o la manual de las barras)
             applied_transform = final_transform if not use_manual_only else manual_transform
 
-            return outputDose, applied_transform
+            return outputDose, applied_transform, outputBoostDose
 
         finally:
-            # ==========================================================
-            # UX: RESTAURAR INTERFAZ (Incluso si hay un error)
-            # ==========================================================
             progress.close()
-            slicer.app.restoreOverrideCursor()  # Regresa el cursor a la normalidad
+            slicer.app.restoreOverrideCursor()
 
     def _getSegmentAndNode(self, structure_name):
         """Busca en todos los RTSTRUCTs de la escena la estructura por su nombre."""
