@@ -2535,6 +2535,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import datetime
         import os
         import slicer
+        import re
 
         # 1. Pedir al usuario dónde guardar el PDF
         default_name = f"RadReirradiation_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -2548,8 +2549,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================
         # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ
         # ==========================================
-        import re  # Importamos la librería de expresiones regulares para extraer las fechas
-
         date_str = datetime.datetime.now().strftime("%B %d, %Y - %H:%M:%S")
 
         dose_a_node = self.dose_a_selector.currentNode() if hasattr(self, 'dose_a_selector') else None
@@ -2559,8 +2558,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         dose_b_name = dose_b_node.GetName() if dose_b_node else "N/A"
 
         rtstruct_name = "N/A"
-        if hasattr(self, 'struct_selector') and self.struct_selector.currentNode():
-            rtstruct_name = self.struct_selector.currentNode().GetName()
+        if hasattr(self, 'rtstruct_selector') and self.rtstruct_selector.currentNode():
+            rtstruct_name = self.rtstruct_selector.currentNode().GetName()
 
         # Identificar qué tipo de registro se utilizó validando el nombre del volumen
         is_resampled = "_Resampled" in dose_a_name or "_Resampled" in dose_b_name
@@ -2584,18 +2583,18 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             registration_status = "Native DICOM Coordinates"
 
-        # --- NUEVA LÓGICA: EXTRACCIÓN DE FECHAS Y CÁLCULO DE TIEMPO ---
+        # --- CORRECCIÓN LÓGICA: EXTRACCIÓN DE FECHAS Y CÁLCULO DE TIEMPO ---
         date_rt1_str = "Unknown Date"
         date_rt2_str = "Unknown Date"
         elapsed_time_str = "N/A"
 
-        # Extraemos las fechas de los títulos de tus paneles usando expresiones regulares
+        # Nueva expresión regular para capturar solo la fecha sin importar qué haya antes
         if hasattr(self, 'rt1_groupBox'):
-            match = re.search(r'\[\s*Date:\s*(.*?)\s*\]', self.rt1_groupBox.title)
+            match = re.search(r'Date:\s*(\d{4}-\d{2}-\d{2})', self.rt1_groupBox.title)
             if match: date_rt1_str = match.group(1).strip()
 
         if hasattr(self, 'rt2_groupBox'):
-            match = re.search(r'\[\s*Date:\s*(.*?)\s*\]', self.rt2_groupBox.title)
+            match = re.search(r'Date:\s*(\d{4}-\d{2}-\d{2})', self.rt2_groupBox.title)
             if match: date_rt2_str = match.group(1).strip()
 
         # Calculamos los meses/días transcurridos automáticamente
@@ -2604,7 +2603,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 d1 = datetime.datetime.strptime(date_rt1_str, "%Y-%m-%d")
                 d2 = datetime.datetime.strptime(date_rt2_str, "%Y-%m-%d")
 
-                # Usamos abs() para asegurar que la resta siempre de positiva sin importar el orden
                 delta = abs((d2 - d1).days)
                 months = delta // 30
                 if months > 0:
@@ -2612,7 +2610,35 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 else:
                     elapsed_time_str = f"{delta} days"
         except Exception as e:
-            pass  # Si falla el parseo de fechas por algún motivo, se queda en "N/A"
+            pass
+
+            # --- NUEVO: EXTRACCIÓN DE PARÁMETROS DEL BOOST SECUENCIAL ---
+        boost_a_html = ""
+        boost_b_html = ""
+        frac_boost_a_html = ""
+        frac_boost_b_html = ""
+
+        # Comprobamos Boost RT1
+        if hasattr(self, 'boost_a_checkbox') and self.boost_a_checkbox.isChecked():
+            b_node = self.moving_boost_dose_selector.currentNode() if hasattr(self,
+                                                                              'moving_boost_dose_selector') else None
+            b_name = b_node.GetName() if b_node else "N/A"
+            b_frac = self.fractions_boost_a_spinbox.value if hasattr(self, 'fractions_boost_a_spinbox') else "N/A"
+
+            boost_a_html = f"<tr><td>Previous Boost Dose (RT1)</td><td>{b_name}</td></tr>"
+            frac_boost_a_html = f"<tr><td>Boost Fractions Delivered (RT1)</td><td>{b_frac}</td></tr>"
+            dose_a_name = f"{dose_a_name} (Base)"  # Aclaramos en el PDF que la primera es la base
+
+        # Comprobamos Boost RT2
+        if hasattr(self, 'boost_b_checkbox') and self.boost_b_checkbox.isChecked():
+            b_node2 = self.fixed_boost_dose_selector.currentNode() if hasattr(self,
+                                                                              'fixed_boost_dose_selector') else None
+            b_name2 = b_node2.GetName() if b_node2 else "N/A"
+            b_frac2 = self.fractions_boost_b_spinbox.value if hasattr(self, 'fractions_boost_b_spinbox') else "N/A"
+
+            boost_b_html = f"<tr><td>Planned Boost Dose (RT2)</td><td>{b_name2}</td></tr>"
+            frac_boost_b_html = f"<tr><td>Boost Fractions Planned (RT2)</td><td>{b_frac2}</td></tr>"
+            dose_b_name = f"{dose_b_name} (Base)"
 
         # Extracción del nombre y ID del paciente
         patient_name = "Unknown Patient"
@@ -2631,7 +2657,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             except:
                 pass
 
-        # Parámetros de Fraccionamiento
+        # Parámetros de Fraccionamiento Base
         frac_a = self.fractions_a_spinbox.value if hasattr(self, 'fractions_a_spinbox') else "N/A"
         frac_b = self.fractions_b_spinbox.value if hasattr(self, 'fractions_b_spinbox') else "N/A"
 
@@ -2692,10 +2718,15 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 <tr><th>Parameter</th><th>Details</th></tr>
                 <tr><td>Patient Name</td><td>{patient_name}</td></tr>
                 <tr><td>Patient ID</td><td>{patient_id}</td></tr>
+
                 <tr><td>Previous Dose (RT1)</td><td>{dose_a_name}</td></tr>
+                {boost_a_html}
                 <tr><td>Date of Previous Treatment</td><td>{date_rt1_str}</td></tr>
+
                 <tr><td>Planned Dose (RT2)</td><td>{dose_b_name}</td></tr>
+                {boost_b_html}
                 <tr><td>Date of Current Treatment</td><td>{date_rt2_str}</td></tr>
+
                 <tr style="background-color: #f8f9fa; font-weight: bold;">
                     <td>Elapsed Time Between Treatments</td><td>{elapsed_time_str}</td>
                 </tr>
@@ -2707,7 +2738,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             <table>
                 <tr><th>Parameter</th><th>Value</th></tr>
                 <tr><td>Fractions Delivered (RT1)</td><td>{frac_a}</td></tr>
+                {frac_boost_a_html}
                 <tr><td>Fractions Planned (RT2)</td><td>{frac_b}</td></tr>
+                {frac_boost_b_html}
             </table>
 
             <h2>3. EQD2 Cumulative Dosimetric Metrics & Biology</h2>
@@ -2726,9 +2759,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             <br><br>
             <p style="text-align:center; font-size: 0.8em; color: #7f8c8d;">
-    * This report is generated by RadReirradiation for 3D Slicer.<br>
-    * Voxel-based radiobiology and overlap priorities were applied during EQD2 accumulation.<br>
-    * Please review all EQD2 and BED summations clinically before use.
+    - This report is generated by RadReirradiation for 3D Slicer.<br>
+    - Voxel-based radiobiology and overlap priorities were applied during EQD2 accumulation.<br>
+    - Please review all EQD2 and BED summations clinically before use.
             </p>
         </body>
         </html>
