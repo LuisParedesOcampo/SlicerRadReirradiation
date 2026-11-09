@@ -50,24 +50,40 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # =========================================================================================================
         # PANEL 1: IMAGE REGISTRATION
         # ==========================================================================================================
-        registrationCollapsibleButton = ctk.ctkCollapsibleButton()
-        registrationCollapsibleButton.text = "1: Load Reirradiation Data"
-        registrationCollapsibleButton.collapsed = False
-        self.layout.addWidget(registrationCollapsibleButton)
-
-        registrationFormLayout = qt.QFormLayout(registrationCollapsibleButton)
-
+        loadDataCollapsibleButton = ctk.ctkCollapsibleButton()
+        loadDataCollapsibleButton.text = "1: Load Reirradiation Data"
+        loadDataCollapsibleButton.collapsed = False
+        self.layout.addWidget(loadDataCollapsibleButton)
+        loadDataFormLayout = qt.QFormLayout(loadDataCollapsibleButton)
         # =======================================================
-        # BOTÓN MÁGICO: AUTO-DETECCIÓN Y AISLAMIENTO
+        # BOTONES DE CARGA DE DATOS (Panel 1)
         # =======================================================
-        self.auto_detect_button = qt.QPushButton("Select Studies and Auto-match (by date)")
+        load_buttons_layout = qt.QHBoxLayout()
+
+        # Botón Principal (Automático) - Mantenemos la lógica intacta
+        self.auto_detect_button = qt.QPushButton("Load Data: Auto-match (by date)")
         self.auto_detect_button.setStyleSheet(
             "background-color: #8e44ad; color: white; padding: 5px; font-weight: bold;")
         self.auto_detect_button.setToolTip(
-            "Escanea la jerarquía DICOM, separa automáticamente el estudio antiguo del nuevo y bloquea el cruce de datos.")
-        registrationFormLayout.addRow(self.auto_detect_button)
+            "It scans the DICOM hierarchy, automatically separates the old study from the new one, and prevents data cross-contamination.")
 
+        # Botón Secundario (Manual Override)
+        self.manual_load_button = qt.QPushButton("Load Data: Manual-match")
+        self.manual_load_button.setStyleSheet(
+            "background-color: #e67e22; color: white; padding: 5px; font-weight: bold;")
+        self.manual_load_button.setToolTip(
+            "Unlock the selectors to manually assign each volume (CT, Dose, Structures) per patient.")
+
+        # Añadimos los botones al layout horizontal (Proporción 70% Automático / 30% Manual)
+        load_buttons_layout.addWidget(self.auto_detect_button, 7)
+        load_buttons_layout.addWidget(self.manual_load_button, 3)
+
+        # Añadimos el layout horizontal al formulario
+        loadDataFormLayout.addRow(load_buttons_layout)
+
+        # Conexiones
         self.auto_detect_button.connect('clicked(bool)', self.onAutoDetectStudies)
+        self.manual_load_button.connect('clicked(bool)', self.onManualLoadClicked)
 
         # =======================================================
         # GRUPO 1: DATOS PREVIOS (MÓVILES) -> Etiqueta "PREV"
@@ -99,7 +115,57 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.moving_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
         rt1_layout.addRow("Structures (RTSTRUCT): ", self.moving_rtstruct_selector)
 
-        registrationFormLayout.addRow(self.rt1_groupBox)
+        # SpinBox for fractions_a (RT1)
+        self.fractions_a_spinbox = qt.QSpinBox()
+        self.fractions_a_spinbox.setValue(25)
+        self.fractions_a_spinbox.setMaximum(100)
+        self.fractions_a_spinbox.setStyleSheet("background-color: #fdf2e9; color: black; font-weight: normal;")
+        self.fractions_a_spinbox.setToolTip("Number of fractions delivered in the previous treatment.")
+        rt1_layout.addRow("Fractions Delivered: ", self.fractions_a_spinbox)
+
+        # =======================================================
+        # BOOST SECUENCIAL RT1 (Oculto por defecto)
+        # =======================================================
+        self.boost_a_checkbox = qt.QCheckBox("Add Sequential Boost (Shares CT and RTSTRUCT)")
+        self.boost_a_checkbox.setStyleSheet("color: #2980b9; font-weight: bold; margin-top: 5px;")
+        rt1_layout.addRow(self.boost_a_checkbox)
+
+        self.moving_boost_dose_selector = slicer.qMRMLNodeComboBox()
+        self.moving_boost_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.moving_boost_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "DOSE")
+        self.moving_boost_dose_selector.selectNodeUponCreation = True
+        self.moving_boost_dose_selector.noneEnabled = True
+        self.moving_boost_dose_selector.showHidden = False
+        self.moving_boost_dose_selector.showChildNodeTypes = True
+        self.moving_boost_dose_selector.setMRMLScene(slicer.mrmlScene)
+
+        self.boost_a_dose_label = qt.QLabel("Boost Dose (RTDOSE):")
+        rt1_layout.addRow(self.boost_a_dose_label, self.moving_boost_dose_selector)
+
+        self.fractions_boost_a_spinbox = qt.QSpinBox()
+        self.fractions_boost_a_spinbox.setValue(0)
+        self.fractions_boost_a_spinbox.setMaximum(100)
+        self.fractions_boost_a_spinbox.setStyleSheet("background-color: #ebf5fb; color: black; font-weight: normal;")
+        self.boost_a_fx_label = qt.QLabel("Boost Fractions Delivered:")
+        rt1_layout.addRow(self.boost_a_fx_label, self.fractions_boost_a_spinbox)
+
+        # Estado inicial oculto
+        self.boost_a_dose_label.hide()
+        self.moving_boost_dose_selector.hide()
+        self.boost_a_fx_label.hide()
+        self.fractions_boost_a_spinbox.hide()
+
+        def toggleBoostA(is_checked):
+            self.boost_a_dose_label.setVisible(is_checked)
+            self.moving_boost_dose_selector.setVisible(is_checked)
+            self.boost_a_fx_label.setVisible(is_checked)
+            self.fractions_boost_a_spinbox.setVisible(is_checked)
+            if not is_checked:
+                self.moving_boost_dose_selector.setCurrentNode(None)
+
+        self.boost_a_checkbox.connect('toggled(bool)', toggleBoostA)
+
+        loadDataFormLayout.addRow(self.rt1_groupBox)
 
         # =======================================================
         # GRUPO 2: DATOS ACTUALES (FIJOS) -> Etiqueta "CURR"
@@ -131,17 +197,69 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.fixed_rtstruct_selector.setMRMLScene(slicer.mrmlScene)
         rt2_layout.addRow("Structures (RTSTRUCT): ", self.fixed_rtstruct_selector)
 
-        registrationFormLayout.addRow(self.rt2_groupBox)
+        # ---  Fracciones integradas al contexto del plan actual ---
+        self.fractions_b_spinbox = qt.QSpinBox()
+        self.fractions_b_spinbox.setValue(10)
+        self.fractions_b_spinbox.setMaximum(100)
+        self.fractions_b_spinbox.setStyleSheet("background-color: #fdf2e9; color: black; font-weight: normal;")
+        self.fractions_b_spinbox.setToolTip("Number of fractions planned for the current treatment.")
+        rt2_layout.addRow("Fractions Planned: ", self.fractions_b_spinbox)
+
+        # =======================================================
+        # BOOST SECUENCIAL RT2 (Oculto por defecto)
+        # =======================================================
+        self.boost_b_checkbox = qt.QCheckBox("Add Sequential Boost (Shares CT and RTSTRUCT)")
+        self.boost_b_checkbox.setStyleSheet("color: #27ae60; font-weight: bold; margin-top: 5px;")
+        rt2_layout.addRow(self.boost_b_checkbox)
+
+        self.fixed_boost_dose_selector = slicer.qMRMLNodeComboBox()
+        self.fixed_boost_dose_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.fixed_boost_dose_selector.addAttribute("vtkMRMLScalarVolumeNode", "VolumeType", "DOSE")
+        self.fixed_boost_dose_selector.selectNodeUponCreation = True
+        self.fixed_boost_dose_selector.noneEnabled = True
+        self.fixed_boost_dose_selector.showHidden = False
+        self.fixed_boost_dose_selector.showChildNodeTypes = True
+        self.fixed_boost_dose_selector.setMRMLScene(slicer.mrmlScene)
+
+        self.boost_b_dose_label = qt.QLabel("Boost Dose (RTDOSE):")
+        rt2_layout.addRow(self.boost_b_dose_label, self.fixed_boost_dose_selector)
+
+        self.fractions_boost_b_spinbox = qt.QSpinBox()
+        self.fractions_boost_b_spinbox.setValue(0)
+        self.fractions_boost_b_spinbox.setMaximum(100)
+        self.fractions_boost_b_spinbox.setStyleSheet("background-color: #e9f7ef; color: black; font-weight: normal;")
+        self.boost_b_fx_label = qt.QLabel("Boost Fractions Planned:")
+        rt2_layout.addRow(self.boost_b_fx_label, self.fractions_boost_b_spinbox)
+
+        # Estado inicial oculto
+        self.boost_b_dose_label.hide()
+        self.fixed_boost_dose_selector.hide()
+        self.boost_b_fx_label.hide()
+        self.fractions_boost_b_spinbox.hide()
+
+        def toggleBoostB(is_checked):
+            self.boost_b_dose_label.setVisible(is_checked)
+            self.fixed_boost_dose_selector.setVisible(is_checked)
+            self.boost_b_fx_label.setVisible(is_checked)
+            self.fractions_boost_b_spinbox.setVisible(is_checked)
+            if not is_checked:
+                self.fixed_boost_dose_selector.setCurrentNode(None)
+
+        self.boost_b_checkbox.connect('toggled(bool)', toggleBoostB)
+
+        loadDataFormLayout.addRow(self.rt2_groupBox)
 
         # Conexiones para que el visualizador del Panel 2 se actualice solo
         self.fixed_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
         self.moving_rtstruct_selector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateVisualizationSelector)
 
-        # --- NUEVO: Panel Seguro de Pre-Alineación Manual ---
-        self.preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
-        self.preAlignCollapsibleButton.text = "1.2: Pre-Alignment, Image Registration and Dose resample "
-        registrationFormLayout.addRow(self.preAlignCollapsibleButton)
-        preAlignLayout = qt.QFormLayout(self.preAlignCollapsibleButton)
+        #==================================================================================================================
+        #        Pre-Alignment, Image Registration and Dose resample
+        #==================================================================================================================
+        preAlignCollapsibleButton = ctk.ctkCollapsibleButton()
+        preAlignCollapsibleButton.text = "2: Pre-Alignment, Image Registration and Dose resample "
+        self.layout.addWidget(preAlignCollapsibleButton)
+        preAlignLayout = qt.QFormLayout(preAlignCollapsibleButton)
 
         # Botón de teletransporte
         self.centerButton = qt.QPushButton("Auto-Center CTs")
@@ -230,7 +348,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.affine_checkbox.setChecked(False)
         self.affine_checkbox.setToolTip(
             "It adds 12 degrees of freedom. Ideal for skull or calibration differences between CTs, but it requires a lot of RAM.")
-        registrationFormLayout.addRow(self.affine_checkbox)
+        preAlignLayout.addRow(self.affine_checkbox)
 
         # Casilla para Registro Deformable
         self.deformable_checkbox = qt.QCheckBox(
@@ -238,22 +356,54 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.deformable_checkbox.setChecked(False)
         self.deformable_checkbox.setToolTip(
             "First calculate Rigid, then apply Deformable. This may take several minutes.")
-        registrationFormLayout.addRow(self.deformable_checkbox)
+        preAlignLayout.addRow(self.deformable_checkbox)
 
         # Botón Azul de Registro
         self.registerButton = qt.QPushButton("Auto-Registration and Dose Resample")
         self.registerButton.toolTip = "It performs an automatic hard registration and adjusts the dose grid.."
         self.registerButton.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
-        registrationFormLayout.addRow(self.registerButton)
+        preAlignLayout.addRow(self.registerButton)
 
         # Connect Register button to function
         self.registerButton.connect('clicked(bool)', self.onRegisterButton)
 
+        # =======================================================
+        #  RESULTADO DEL RESAMPLEO (Dosis para calcular)
+        # =======================================================
+        resampled_groupBox = qt.QGroupBox("Registered and Resampled Dose Volumes")
+        resampled_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+        resampled_layout = qt.QFormLayout(resampled_groupBox)
+
+        self.dose_a_selector = slicer.qMRMLNodeComboBox()
+        self.dose_a_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.dose_a_selector.selectNodeUponCreation = True
+        self.dose_a_selector.addEnabled = False
+        self.dose_a_selector.removeEnabled = False
+        self.dose_a_selector.noneEnabled = False
+        self.dose_a_selector.showHidden = False
+        self.dose_a_selector.showChildNodeTypes = True
+        self.dose_a_selector.setMRMLScene(slicer.mrmlScene)
+        self.dose_a_selector.setToolTip("Verify the dose matrix for the Previous Radiation Course (Resampled).")
+        resampled_layout.addRow("RD Previous (Resampled): ", self.dose_a_selector)
+
+        self.dose_b_selector = slicer.qMRMLNodeComboBox()
+        self.dose_b_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.dose_b_selector.selectNodeUponCreation = True
+        self.dose_b_selector.addEnabled = False
+        self.dose_b_selector.removeEnabled = False
+        self.dose_b_selector.noneEnabled = False
+        self.dose_b_selector.showHidden = False
+        self.dose_b_selector.showChildNodeTypes = True
+        self.dose_b_selector.setMRMLScene(slicer.mrmlScene)
+        self.dose_b_selector.setToolTip("Verify the dose matrix for the Current Planned Course.")
+        resampled_layout.addRow("RD Planned (Current): ", self.dose_b_selector)
+
+        preAlignLayout.addRow(resampled_groupBox)
         # ===========================================================================================================
-        # PANEL 2: ESTRUCTURAS Y VISUALIZACIÓN
+        # PANEL 3: ESTRUCTURAS Y VISUALIZACIÓN
         # ===========================================================================================================
         structuresCollapsibleButton = ctk.ctkCollapsibleButton()
-        structuresCollapsibleButton.text = "2: Structures & Visualization"
+        structuresCollapsibleButton.text = "3: Structures Visualization, Biological Configuration and EQD2 Calculations"
         self.layout.addWidget(structuresCollapsibleButton)
         structuresFormLayout = qt.QFormLayout(structuresCollapsibleButton)
 
@@ -274,7 +424,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # =======================================================
         self.rtstruct_selector.addAttribute("vtkMRMLSegmentationNode", "RadReirradiationUse", "True")
 
-        structuresFormLayout.addRow("RT2 Structures: ", self.rtstruct_selector)
+        structuresFormLayout.addRow("Select Structures set: ", self.rtstruct_selector)
 
         # --- CONTENEDOR HORIZONTAL PARA LOS BOTONES ---
         visibilityButtonsLayout = qt.QHBoxLayout()
@@ -312,7 +462,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # PANEL 2.1: CONFIGURACIÓN BIOLÓGICA Y ASIGNACIÓN DE ROLES
         # ==========================================================
         bioCollapsibleButton = ctk.ctkCollapsibleButton()
-        bioCollapsibleButton.text = "2.1: Biological Configuration "
+        bioCollapsibleButton.text = "3.1: Biological Configuration"
         self.layout.addWidget(bioCollapsibleButton)
         bioFormLayout = qt.QFormLayout(bioCollapsibleButton)
 
@@ -340,134 +490,39 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # --- TABLA PURA DE ROLES (Qt) ---
         self.bio_table = qt.QTableWidget()
-        self.bio_table.setColumnCount(3)
-        self.bio_table.setHorizontalHeaderLabels(["Structure Name", "Role", "Overlap Priority"])
+        self.bio_table.setColumnCount(5)  # <-- CAMBIO A 5 COLUMNAS
+        self.bio_table.setHorizontalHeaderLabels(
+            ["Structure Name", "Role", "α/β Ratio (Gy)","Recovery (%)", "Overlap Priority"])  # <-- SE AGREGA ALFA/BETA
 
         # Estética de la tabla
-        self.bio_table.horizontalHeader().setStretchLastSection(True)
-        self.bio_table.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
         self.bio_table.verticalHeader().setVisible(False)
         self.bio_table.setMinimumHeight(180)
+
+        # Ajuste proporcional de las columnas para una mejor visualización clínica
+        header = self.bio_table.horizontalHeader()
+        header.setSectionResizeMode(0, qt.QHeaderView.Stretch)  # Nombre de la estructura (Se estira para nombres largos)
+        header.setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)  # Rol (Se ajusta al texto)
+        header.setSectionResizeMode(2, qt.QHeaderView.ResizeToContents)  # Alfa/Beta (Se ajusta a la caja numérica)
+        header.setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)  # Recuperación %
+        header.setSectionResizeMode(4, qt.QHeaderView.Stretch)  # Prioridad (Se estira para balancear la tabla)
+
         bioFormLayout.addRow(self.bio_table)
 
         # Conectamos el botón a nuestra nueva función
         self.load_bio_button.connect('clicked(bool)', self.onLoadStructuresForBiology)
-
-        # =========================================================================================================================================
-        # PANEL 3: REIRRADIATION ANALYSIS
-        # ========================================================================================================================================
+        # =========================================================================================================
+        # PANEL 3.2: EXECUTE EQD2 CALCULATION
+        # =========================================================================================================
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "3: Reirradiation Calculation Settings"
+        parametersCollapsibleButton.text = "3.2: Execute EQD2 Accumulation"
         self.layout.addWidget(parametersCollapsibleButton)
-
-        # Layout principal del panel
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # =======================================================
-        # GRUPO 1: VOLÚMENES DE DOSIS (INPUTS)
-        # =======================================================
-        doses_groupBox = qt.QGroupBox("3.1: Dose Volumes")
-        doses_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        doses_layout = qt.QFormLayout(doses_groupBox)
-
-        # Selector for Dose A (RT1)
-        self.dose_a_selector = slicer.qMRMLNodeComboBox()
-        self.dose_a_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.dose_a_selector.selectNodeUponCreation = True
-        self.dose_a_selector.addEnabled = False
-        self.dose_a_selector.removeEnabled = False
-        self.dose_a_selector.noneEnabled = False
-        self.dose_a_selector.showHidden = False
-        self.dose_a_selector.showChildNodeTypes = True
-        self.dose_a_selector.setMRMLScene(slicer.mrmlScene)
-        self.dose_a_selector.setToolTip("Select the dose matrix for the Previous Radiation Course (RT1).")
-        doses_layout.addRow("RD Previous (RT1) (Resampled) : ", self.dose_a_selector)
-
-        # Selector for Dose B (RT2)
-        self.dose_b_selector = slicer.qMRMLNodeComboBox()
-        self.dose_b_selector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.dose_b_selector.selectNodeUponCreation = True
-        self.dose_b_selector.addEnabled = False
-        self.dose_b_selector.removeEnabled = False
-        self.dose_b_selector.noneEnabled = False
-        self.dose_b_selector.showHidden = False
-        self.dose_b_selector.showChildNodeTypes = True
-        self.dose_b_selector.setMRMLScene(slicer.mrmlScene)
-        self.dose_b_selector.setToolTip("Select the dose matrix for the Planned Radiation Course (RT2).")
-        doses_layout.addRow("RD Planned (RT2): ", self.dose_b_selector)
-
-        # Añadimos el Grupo 1 al layout principal
-        parametersFormLayout.addRow(doses_groupBox)
-
-        # =======================================================
-        # GRUPO 2: PARÁMETROS BIOLÓGICOS Y DE FRACCIONAMIENTO
-        # =======================================================
-        bio_groupBox = qt.QGroupBox("3.2: Biological & Fractionation Parameters")
-        bio_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        bio_layout = qt.QFormLayout(bio_groupBox)
-
-        # SpinBox for fractions_a (RT1)
-        self.fractions_a_spinbox = qt.QSpinBox()
-        self.fractions_a_spinbox.setValue(25)
-        self.fractions_a_spinbox.setMaximum(100)
-        bio_layout.addRow("Fractions (RT1): ", self.fractions_a_spinbox)
-
-        # SpinBox for fractions_b (RT2)
-        self.fractions_b_spinbox = qt.QSpinBox()
-        self.fractions_b_spinbox.setValue(10)
-        self.fractions_b_spinbox.setMaximum(100)
-        bio_layout.addRow("Fractions (RT2): ", self.fractions_b_spinbox)
-
-        # SpinBox for Alpha/Beta Ratio fo OARs (ab)
-        self.ab_spinbox = qt.QDoubleSpinBox()
-        self.ab_spinbox.setValue(3.0)
-        self.ab_spinbox.setDecimals(1)
-        self.ab_spinbox.setToolTip("Alpha/Beta Ratio (\u03b1/\u03b2) Organs at risk (OARs) (Gy).")
-        bio_layout.addRow("\u03b1/\u03b2 Ratio OARs (Gy): ", self.ab_spinbox)
-
-        # SpinBox for Alpha/Beta Ratio for Tumor (ab)
-        self.ab_tumor_spinbox = qt.QDoubleSpinBox()
-        self.ab_tumor_spinbox.setValue(10)
-        self.ab_tumor_spinbox.setDecimals(1)
-        self.ab_tumor_spinbox.setToolTip("Alpha/Beta Ratio (\u03b1/\u03b2) Tumor (Gy).")
-        bio_layout.addRow("\u03b1/\u03b2 Ratio Tumor (Gy): ", self.ab_tumor_spinbox)
-
-        # Añadimos el Grupo 2 al layout principal
-        parametersFormLayout.addRow(bio_groupBox)
-
-        # =======================================================
-        # GRUPO 3: RECUPERACIÓN TISULAR Y SALIDA
-        # =======================================================
-        recovery_groupBox = qt.QGroupBox("3.3: Tissue Recovery & Output Configuration")
-        recovery_groupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
-        recovery_layout = qt.QFormLayout(recovery_groupBox)
-
-        # Recovery Factor Checkbox
-        self.recovery_checkbox = qt.QCheckBox("Enable Partial Recovery (Time-based model)")
-        self.recovery_checkbox.setChecked(False)
-        self.recovery_checkbox.setToolTip(
-            "The BED contribution from the previous irradiation course is reduced according its recovery assumption before being combined with the new treatment")
-        recovery_layout.addRow(self.recovery_checkbox)
-
-        # Months Spinbox
-        self.months_spinbox = qt.QSpinBox()
-        self.months_spinbox.setRange(0, 100)
-        self.months_spinbox.setValue(12)
-        self.months_spinbox.setSuffix(" months")
-        self.months_spinbox.setEnabled(False)  # Inicia apagado
-        recovery_layout.addRow("Time interval: ", self.months_spinbox)
-
-        # Output Volume Name
+        # Output Volume Name (Sin subgrupos, directo al layout)
         self.output_name_input = qt.QLineEdit()
         self.output_name_input.setPlaceholderText("Optional: Custom name for the new volume...")
         self.output_name_input.setToolTip("If you leave it blank, it will use the default name.")
-        recovery_layout.addRow("Output Dose Name: ", self.output_name_input)
-
-        # Añadimos el Grupo 3 al layout principal
-        parametersFormLayout.addRow(recovery_groupBox)
-
-        # --- Conexión de la casilla de meses ---
-        self.recovery_checkbox.connect('toggled(bool)', self.months_spinbox.setEnabled)
+        parametersFormLayout.addRow("Output Dose Name: ", self.output_name_input)
 
         # =======================================================
         # BOTÓN DE CÁLCULO MAESTRO
@@ -475,18 +530,20 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.applyButton = qt.QPushButton("Calculate Cumulative EQD2 Dose")
         self.applyButton.toolTip = "Execute the voxel-by-voxel BED/EQD2 accumulation."
         self.applyButton.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50; 
-                color: white; 
-                font-weight: bold; 
-                padding: 8px;
-                font-size: 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
+                    QPushButton {
+                        background-color: #4CAF50; 
+                        color: white; 
+                        font-weight: bold; 
+                        padding: 12px;
+                        font-size: 14px;
+                        border-radius: 6px;
+                        margin-top: 10px;
+                        margin-bottom: 5px;
+                    }
+                    QPushButton:hover {
+                        background-color: #45a049;
+                    }
+                """)
         parametersFormLayout.addRow(self.applyButton)
 
         # Connect button to function
@@ -496,7 +553,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================
 
         metricsCollapsibleButton = ctk.ctkCollapsibleButton()
-        metricsCollapsibleButton.text = "4: EQD2 Metrics and DVH"
+        metricsCollapsibleButton.text = "4: EQD2 Metrics, DVH, Export Dicom and PDF Report"
         self.layout.addWidget(metricsCollapsibleButton)
         metricsFormLayout = qt.QFormLayout(metricsCollapsibleButton)
 
@@ -651,6 +708,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             target_patient_id = list(patients_dict.keys())[0]
 
+        # Guardamos el nombre del paciente para usarlo en la UI
+        patient_name = patients_dict[target_patient_id]
+
         # =======================================================
         # PASO 3: Recolectar estudios SOLO del paciente seleccionado
         # =======================================================
@@ -669,14 +729,12 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             studies_dict[study_item_id] = study_date
 
         # =======================================================
-        # PASO 3.1: CASO ESPECIAL - UN SOLO ESTUDIO (Braquiterapia / Consolidado)
+        # PASO 3.1: CASO ESPECIAL - UN SOLO ESTUDIO
         # =======================================================
         if len(studies_dict) < 2:
-            patient_name = patients_dict[target_patient_id]
             single_study_id = list(studies_dict.keys())[0]
             single_date = studies_dict[single_study_id]
 
-            # Preguntamos al usuario si desea activar el modo manual
             manual_override = slicer.util.confirmOkCancelDisplay(
                 f"Only one study was detected. ({single_date}) for the patient/data set '{patient_name}'.\n\n"
                 "This occurs with exports or plan consolidations on the same date..\n\n"
@@ -685,15 +743,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
 
             if manual_override:
-                # Cambiamos las reglas de la UI y etiquetamos los nodos
                 self._tagNodesForManualMode(shNode, single_study_id)
                 self._setSelectorsMode("MANUAL")
 
-                # Formateamos el título para avisar que está en modo manual
                 fmt_date = f"{single_date[:4]}-{single_date[4:6]}-{single_date[6:]}" if single_date and len(
                     single_date) == 8 else "Unknown"
-                self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {fmt_date} | MANUAL ]")
-                self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {fmt_date} | MANUAL ]")
+
+                # NUEVO: Título con Nombre + Fecha para un solo estudio
+                self.rt1_groupBox.setTitle(
+                    f"RT1: Previous Treatment (Moving)  [ {patient_name} | Date: {fmt_date} | MANUAL ]")
+                self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | Date: {fmt_date} | MANUAL ]")
 
                 slicer.util.showStatusMessage("Manual selection mode unlocked. Please assign the files..")
             return
@@ -757,28 +816,56 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             prev_study_id, prev_date_raw = sorted_studies[0]
             curr_study_id, curr_date_raw = sorted_studies[-1]
 
-        # =======================================================
-        # PASO 4: Ordenar, Etiquetar y Asignar
-        # =======================================================
-        prev_date_str = format_dicom_date(prev_date_raw)
-        curr_date_str = format_dicom_date(curr_date_raw)
+            # =======================================================
+            # PASO 4: Ordenar, Etiquetar y Asignar
+            # =======================================================
+            prev_date_str = format_dicom_date(prev_date_raw)
+            curr_date_str = format_dicom_date(curr_date_raw)
 
-        self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ Date: {prev_date_str} ]")
-        self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ Date: {curr_date_str} ]")
+            self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ {patient_name} | Date: {prev_date_str} ]")
+            self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | Date: {curr_date_str} ]")
 
-        self._tagNodesInStudy(shNode, prev_study_id, "PREV")
-        self._tagNodesInStudy(shNode, curr_study_id, "CURR")
+            self._tagNodesInStudy(shNode, prev_study_id, "PREV")
+            self._tagNodesInStudy(shNode, curr_study_id, "CURR")
 
-        self._autoSelectLatestNode(self.moving_ct_selector)
-        self._autoSelectLatestNode(self.moving_dose_selector)
-        self._autoSelectLatestNode(self.moving_rtstruct_selector)
+            # Asignación de RT1 (Previo)
+            self._autoSelectLatestNode(self.moving_ct_selector)
+            self._autoSelectDoseNode(self.moving_dose_selector, "PREVIOUS (RT1)")  # <-- Motor de seguridad
+            self._autoSelectLatestNode(self.moving_rtstruct_selector)
 
-        self._autoSelectLatestNode(self.fixed_ct_selector)
-        self._autoSelectLatestNode(self.fixed_dose_selector)
-        self._autoSelectLatestNode(self.fixed_rtstruct_selector)
+            # Asignación de RT2 (Actual)
+            self._autoSelectLatestNode(self.fixed_ct_selector)
+            self._autoSelectDoseNode(self.fixed_dose_selector, "CURRENT (RT2)")  # <-- Motor de seguridad
+            self._autoSelectLatestNode(self.fixed_rtstruct_selector)
 
-        slicer.util.showStatusMessage(f"Data isolated for patient: {patients_dict[target_patient_id]}")
+            self.autoSelectLatestRTStruct()
+            slicer.util.showStatusMessage(f"Data isolated for patient: {patient_name}")
+    #===============================================================================================================
+    def _autoSelectDoseNode(self, selector, study_type):
+        """
+        Regla de seguridad clínica (Fail-Safe):
+        Asigna la dosis automáticamente si hay solo 1. Si hay múltiples (Boost),
+        fuerza la selección manual para evitar intercambios accidentales.
+        """
+        import slicer
+        node_count = selector.nodeCount()
 
+        if node_count == 1:
+            # Solo hay un plan, lo asignamos con seguridad
+            selector.setCurrentNodeIndex(0)
+        elif node_count > 1:
+            # Hay un plan base y un boost (o más). Bloqueamos la auto-asignación.
+            selector.setCurrentNode(None)
+
+            # Alerta al usuario
+            slicer.util.warningDisplay(
+                f"Attention: Detected {node_count} RTDOSE files in {study_type}.\n\n"
+                "To ensure clinical safety, the algorithm will NOT automatically assign the dose.\n"
+                "Please open the menu and manually select which one is the Base Dose and which one is the Boost.",
+                windowTitle="Safety Validation: Multiple Doses"
+            )
+        else:
+            selector.setCurrentNode(None)
     # ==========================================================
     # FUNCIONES AUXILIARES PARA EL MODO MANUAL INTELIGENTE
     # ==========================================================
@@ -836,7 +923,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     data_node.SetAttribute("VolumeType", "RS")
 
     def _tagNodesInStudy(self, shNode, study_item_id, role_prefix):
-        """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT, CURR_DOSE, PREV_RS)"""
+        """Inyecta el rol combinado de Estudio y Modalidad (ej. PREV_CT) Y la etiqueta para los Boosts."""
         children = vtk.vtkIdList()
         shNode.GetItemChildren(study_item_id, children, True)
 
@@ -849,18 +936,129 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     node_name = data_node.GetName().upper()
                     if "DOSE" in node_name:
                         data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_DOSE")
+                        data_node.SetAttribute("VolumeType", "DOSE")  # <-- FIX: Necesario para el Boost
                     else:
                         data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_CT")
+                        data_node.SetAttribute("VolumeType", "CT")  # <-- FIX: Etiqueta de respaldo
 
                 # 2. Si es una estructura (RTSTRUCT)
                 elif data_node.IsA("vtkMRMLSegmentationNode"):
                     data_node.SetAttribute("RadReirradiationRole", f"{role_prefix}_RS")
+                    data_node.SetAttribute("VolumeType", "RS")  # <-- FIX: Etiqueta de respaldo
 
     def _autoSelectLatestNode(self, selector):
         """Obliga al selector a escoger el último elemento de la lista (suele ser el más reciente o la iteración final)."""
         node_count = selector.nodeCount()
         if node_count > 0:
             selector.setCurrentNodeIndex(node_count - 1)
+
+    def onManualLoadClicked(self):
+        """Habilita la asignación manual validando previamente al paciente."""
+        import qt
+        import slicer
+        import vtk
+
+        slicer.util.showStatusMessage("Initializing Manual Load Mode...")
+        slicer.app.processEvents()
+
+        # =======================================================
+        # PASO 0: LIMPIEZA GLOBAL Y REINICIO DE UI
+        # =======================================================
+        all_scene_nodes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")) + list(
+            slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+
+        for node in all_scene_nodes:
+            node.RemoveAttribute("RadReirradiationRole")
+            node.RemoveAttribute("VolumeType")
+
+        if hasattr(self, '_setSelectorsMode'):
+            self._setSelectorsMode("STRICT")
+
+        self.rt1_groupBox.setTitle("RT1: Previous Treatment (Moving)")
+        self.rt2_groupBox.setTitle("RT2: Current Plan (Fixed)")
+
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        all_volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+
+        # =======================================================
+        # PASO 1: Identificar pacientes en la escena
+        # =======================================================
+        patients_dict = {}
+        for volume in all_volumes:
+            item_id = shNode.GetItemByDataNode(volume)
+            if item_id:
+                patient_id = shNode.GetItemAncestorAtLevel(item_id,
+                                                           slicer.vtkMRMLSubjectHierarchyConstants.GetDICOMLevelPatient())
+                if patient_id and patient_id != 0:
+                    if patient_id not in patients_dict:
+                        patients_dict[patient_id] = shNode.GetItemName(patient_id)
+
+        if not patients_dict:
+            slicer.util.warningDisplay("No DICOM patients found in the scene.")
+            return
+
+        target_patient_id = None
+
+        # =======================================================
+        # PASO 2: Resolver selección si hay múltiples pacientes
+        # =======================================================
+        if len(patients_dict) > 1:
+            patient_names = list(patients_dict.values())
+            selected_name = qt.QInputDialog.getItem(None, "Manual Mode", "Select patient to load manually:",
+                                                    patient_names, 0, False)
+            if not selected_name: return
+            for pid, pname in patients_dict.items():
+                if pname == selected_name:
+                    target_patient_id = pid
+                    break
+        else:
+            target_patient_id = list(patients_dict.keys())[0]
+
+        # =======================================================
+        # PASO 3: Etiquetar recursivamente todos los nodos del paciente
+        # =======================================================
+        children = vtk.vtkIdList()
+        shNode.GetItemChildren(target_patient_id, children, True)
+
+        for i in range(children.GetNumberOfIds()):
+            child_id = children.GetId(i)
+            data_node = shNode.GetItemDataNode(child_id)
+            if data_node:
+                # Si es un volumen (CT o DOSIS)
+                if data_node.IsA("vtkMRMLScalarVolumeNode"):
+                    node_name = data_node.GetName().upper()
+                    if "DOSE" in node_name:
+                        data_node.SetAttribute("VolumeType", "DOSE")
+                    else:
+                        data_node.SetAttribute("VolumeType", "CT")
+                # Si es una segmentación
+                elif data_node.IsA("vtkMRMLSegmentationNode"):
+                    data_node.SetAttribute("VolumeType", "RS")
+
+        # =======================================================
+        # PASO 4: Desbloquear Interfaz (Filtrado Seguro)
+        # =======================================================
+        # Activamos el modo manual que filtra solo por "VolumeType"
+        if hasattr(self, '_setSelectorsMode'):
+            self._setSelectorsMode("MANUAL")
+
+        patient_name = patients_dict[target_patient_id]
+
+        # Limpiamos los selectores para que el usuario asigne desde cero
+        self.moving_ct_selector.setCurrentNode(None)
+        self.moving_dose_selector.setCurrentNode(None)
+        self.moving_rtstruct_selector.setCurrentNode(None)
+        self.fixed_ct_selector.setCurrentNode(None)
+        self.fixed_dose_selector.setCurrentNode(None)
+        self.fixed_rtstruct_selector.setCurrentNode(None)
+
+        # Actualizamos los títulos para dejar claro el estado de la UI
+        self.rt1_groupBox.setTitle(f"RT1: Previous Treatment (Moving)  [ {patient_name} | MANUAL ]")
+        self.rt2_groupBox.setTitle(f"RT2: Current Plan (Fixed)  [ {patient_name} | MANUAL ]")
+
+        # Cargar set de estructuras en el selector automaticamente
+        self.autoSelectLatestRTStruct()
+        slicer.util.showStatusMessage(f"Manual mode unlocked for: {patient_name}. Please assign files.")
 
     def onCenterButtonClicked(self):
 
@@ -1070,6 +1268,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sliderRoll.value = 0
             self.sliderYaw.value = 0
 
+    # ====================================================================================================
+    #              BOTON CALCULO EQD2
+    # =========================================================================================================
     def onApplyButton(self):
         # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
         self.resetResultsDisplay()
@@ -1081,128 +1282,95 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ==========================================================
         progress_dialog = slicer.util.createProgressDialog(
             parent=slicer.util.mainWindow(),
-            labelText="Calculating 3D biological Dose EQD2...\n\nThis may take a moment. Please wait.",
-            maximum=0  # ¡El '0' es el truco! Hace que la barra se mueva de lado a lado infinitamente
+            labelText="Calculating 3D Voxel-Based Dose EQD2...\n\nThis may take a moment. Please wait.",
+            maximum=0  # La barra se mueve de lado a lado infinitamente
         )
         progress_dialog.windowTitle = "RadReirradiation - Processing Dose"
-        progress_dialog.setCancelButton(None)  # Ocultamos el botón "Cancelar" para que el usuario no rompa el cálculo
+        progress_dialog.setCancelButton(None)
         progress_dialog.show()
-        slicer.app.processEvents()  # Forzamos a que la ventana se dibuje INMEDIATAMENTE en pantalla
+        slicer.app.processEvents()
 
         try:
+            slicer.util.showStatusMessage("Validating biological parameters... Please wait.")
 
-            try:
-                slicer.util.showStatusMessage("Calculating new EQD2 dose... Please wait.")
+            # ==========================================================
+            # 2. RECOLECCIÓN DE TABLA BIOLÓGICA (Panel 3.1)
+            # ==========================================================
+            current_bio_setup = self.getBiologicalConfiguration()
 
-                # ===================== TABLA BIOLÓGICA ====================================
-                # 1. Extraemos la configuración de la tabla
-                current_bio_setup = self.getBiologicalConfiguration()
+            if not current_bio_setup:
+                slicer.util.warningDisplay(
+                    "The biological table is empty. Please load and configure the structures first.",
+                    windowTitle="Validation Error")
+                return
 
-                # 2. Imprimimos para ver la magia en la consola de Python de Slicer
-                print("--- Biological configuration extracted ---")
-                for structure, config in current_bio_setup.items():
-                    print(f"structure: {structure} | Role: {config['role']} | Wins in interception: {config['priority']}")
-                print("----------------------------------------")
+            # Imprimimos en la consola de Slicer para trazabilidad clínica (QA)
+            print("\n--- RadReirradiation: Biological Configuration ---")
+            for structure, config in current_bio_setup.items():
+                print(
+                    f"[{structure}] -> Role: {config['role']} | α/β: {config['alpha_beta']} | Rec: {config['recovery_percent']}% | Wins: {config['priority']}")
+            print("------------------------------------------------\n")
 
-                # Si la tabla estaba vacía, detenemos el cálculo por seguridad
-                if not current_bio_setup:
-                    slicer.util.warningDisplay("The biological table is empty. Please load the structures first..")
-                    return
-                # =========================================================================
+            # ==========================================================
+            # 3. RECOLECCIÓN DE VARIABLES (Base y Boost)
+            # ==========================================================
+            dose_a_node = self.dose_a_selector.currentNode()
+            dose_b_node = self.dose_b_selector.currentNode()
+            fx_a = self.fractions_a_spinbox.value
+            fx_b = self.fractions_b_spinbox.value
 
-                import numpy as np
+            # NUEVO: Extracción silenciosa de los Boosts desde la memoria interna
+            boost_a_node = getattr(self, '_hidden_boost_a_node', None)
+            fx_boost_a = self.fractions_boost_a_spinbox.value if hasattr(self, 'fractions_boost_a_spinbox') else 0
 
-                # 1. Recolectar los datos que el usuario puso en la interfaz
-                dose_a_node = self.dose_a_selector.currentNode()
-                dose_b_node = self.dose_b_selector.currentNode()
-                fx_a = self.fractions_a_spinbox.value
-                fx_b = self.fractions_b_spinbox.value
-                use_recovery = self.recovery_checkbox.isChecked()
-                months = self.months_spinbox.value
+            boost_b_node = getattr(self, '_hidden_boost_b_node', None)
+            fx_boost_b = self.fractions_boost_b_spinbox.value if hasattr(self, 'fractions_boost_b_spinbox') else 0
+
+            custom_name = ""
+            if hasattr(self, 'output_name_input'):
                 custom_name = self.output_name_input.text.strip()
 
-                # ---  LÓGICA: VALORES ALPHA/BETA ---
+            # ==========================================================
+            # 4. LLAMADA AL MOTOR MATEMÁTICO
+            # ==========================================================
+            slicer.util.showStatusMessage("Calculating spatial EQD2 with NumPy and SimpleITK...")
 
-                ab_oar_value = float(self.ab_spinbox.value)
-                ab_tumor_value = float(self.ab_tumor_spinbox.value)
+            # Llamamos a la función actualizada con los parámetros del boost
+            resultado = self.logic.procesarDosis(
+                dose_a_node=dose_a_node,
+                dose_b_node=dose_b_node,
+                fx_a=fx_a,
+                fx_b=fx_b,
+                bio_config=current_bio_setup,
+                custom_name=custom_name,
+                boost_a_node=boost_a_node,
+                fx_boost_a=fx_boost_a,
+                boost_b_node=boost_b_node,
+                fx_boost_b=fx_boost_b
+            )
 
-                # --- CREACIÓN DEL MAPA BIOLÓGICO 3D (Las Capas) ---
-                slicer.util.showStatusMessage("Generating biological masks...")
-                slicer.app.processEvents()  # Mantiene la UI fluida
+            # ==========================================================
+            # 5. ACTUALIZACIÓN VISUAL POST-CÁLCULO
+            # ==========================================================
+            self.eqd2_node = resultado
 
-                # Usamos dose_a_node como referencia para el tamaño (shape) del paciente
-                dose_array_shape = slicer.util.arrayFromVolume(dose_a_node).shape
-                ab_map = np.full(dose_array_shape, ab_oar_value, dtype=np.float32)
+            if hasattr(self, 'exportButton'):
+                self.exportButton.enabled = True
 
-                segmentation_node = self.rtstruct_selector.currentNode()
-                segmentation = segmentation_node.GetSegmentation()
+            slicer.util.showStatusMessage("Voxel-Based EQD2 calculation completed!")
+            slicer.util.infoDisplay("Cumulative EQD2 calculation successfully completed!",
+                                    windowTitle="RadReirradiation Success")
 
-                tumor_mask_global = np.zeros(dose_array_shape, dtype=bool)
-                oar_mask_global = np.zeros(dose_array_shape, dtype=bool)
-                segment_masks = {}
-
-                # Recorremos y extraemos matrices de las estructuras seleccionadas
-                for i in range(segmentation.GetNumberOfSegments()):
-                    segment_id = segmentation.GetNthSegmentID(i)
-                    segment_name = segmentation.GetSegment(segment_id).GetName()
-
-                    if segment_name in current_bio_setup:
-                        # Extraer matriz binaria, ajustada al tamaño de la dosis A
-                        segment_array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation_node, segment_id,
-                                                                                   dose_a_node)
-
-                        if segment_array is not None:
-                            binary_mask = (segment_array > 0)
-                            segment_masks[segment_name] = binary_mask
-
-                            if current_bio_setup[segment_name]["role"] == "Tumor":
-                                tumor_mask_global |= binary_mask
-                            else:
-                                oar_mask_global |= binary_mask
-
-                # Pintamos las capas en la matriz ab_map
-                ab_map[tumor_mask_global] = ab_tumor_value
-                ab_map[oar_mask_global] = ab_oar_value  # La Capa 3: OAR sobreescribe Tumor por defecto
-
-                # Capa 4: Excepciones (Si el usuario forzó que un Tumor gane)
-                for name, config in current_bio_setup.items():
-                    if config["priority"] == "Tumor" and name in segment_masks:
-                        overlap = segment_masks[name] & tumor_mask_global
-                        ab_map[overlap] = ab_tumor_value
-
-                # 2. Enviar los datos a la Lógica (el cerebro)
-                try:
-                    slicer.util.showStatusMessage("Calculating BED/EQD2 voxel by voxel...")
-
-                    # ¡Llamamos a la magia! ATENCIÓN: Ahora enviamos 'ab_map' en lugar de 'ab'
-                    resultado = self.logic.procesarDosis(dose_a_node, dose_b_node, ab_map, fx_a, fx_b, use_recovery, months,
-                                                         custom_name)
-
-                    # 1. Guardar el resultado en la memoria del Widget (para el botón de exportar)
-                    self.eqd2_node = resultado
-                    # Encendemos el botón verde de exportar
-                    self.exportButton.enabled = True
-
-                    slicer.util.showStatusMessage("¡Calculation completed!")
-                    slicer.util.infoDisplay("Cumulative EQD2 calculation successfully completed!",
-                                            windowTitle="RadReirradiation")
-
-                except Exception as e:
-                    # Si algo falla (ej. tamaños distintos)
-                    slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
-
-            except Exception as e:
-                slicer.util.errorDisplay(f"Calculation failed: {e}")
         except Exception as e:
-            slicer.util.errorDisplay(f"Calculation failed: {e}")
-        # ==========================================================
-        # 2. CERRAR VENTANA DE ESPERA Y LIBERAR INTERFAZ
-        # ==========================================================
+            slicer.util.errorDisplay(f"Calculation Error:\n{str(e)}", windowTitle="RadReirradiation Error")
+            import traceback
+            traceback.print_exc()
+
         finally:
-            #  Al terminar (o si hay error), volvemos a habilitar el botón
+            # Al terminar (o si hay error), volvemos a habilitar el botón y cerrar la ventana
             self.applyButton.setEnabled(True)
             slicer.util.showStatusMessage("Ready.")
-            progress_dialog.close()  # Destruimos la ventana de carga
+            progress_dialog.close()
 
     def updateVisualizationSelector(self, node=None):
         """Filtra el combobox del Panel 2 para mostrar solo las estructuras cargadas en el Panel 1"""
@@ -1231,6 +1399,14 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         fixed_dose = self.fixed_dose_selector.currentNode()
         moving_rtstruct = self.moving_rtstruct_selector.currentNode()
         fixed_rtstruct = self.fixed_rtstruct_selector.currentNode()
+
+        # =======================================================
+        # 0. NUEVO: LECTURA DEL BOOST SECUENCIAL (Si está activo)
+        # =======================================================
+        boost_rt1_node = None
+        if hasattr(self, 'moving_boost_dose_selector') and hasattr(self, 'boost_a_checkbox'):
+            if self.boost_a_checkbox.isChecked():
+                boost_rt1_node = self.moving_boost_dose_selector.currentNode()
 
         # =======================================================
         # 1. CACHÉ DE ESTADO DE UI (Protección contra el refresco)
@@ -1269,18 +1445,26 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 slicer.util.showStatusMessage("Running Rigid Registration...")
 
             # =======================================================
-            # 2. LLAMAR A LA LÓGICA (obtenemos dosis y matrix de de transformacion)
+            # 2. LLAMAR A LA LÓGICA (obtenemos dosis, matriz y boost)
             # =======================================================
-            aligned_dose_node, transform_node = self.logic.runFastRegistration(
-                fixed_ct, moving_ct, moving_dose, fixed_dose,
-                use_deformable, use_affine, self.manual_transform_node, use_manual_only
+            # ACTUALIZADO: Ahora recibe el boost y devuelve 3 variables
+            aligned_dose_node, transform_node, aligned_boost_node = self.logic.runFastRegistration(
+                fixed_ct=fixed_ct,
+                moving_ct=moving_ct,
+                moving_dose=moving_dose,
+                fixed_dose=fixed_dose,
+                use_deformable=use_deformable,
+                use_affine=use_affine,
+                manual_transform=self.manual_transform_node,
+                use_manual_only=use_manual_only,
+                moving_boost_dose=boost_rt1_node
             )
 
             if not aligned_dose_node:
                 return  # Si falló algo en la lógica, paramos.
 
             # =======================================================
-            # 2.5 NUEVO: ALINEAR, DIFERENCIAR Y RENOMBRAR ESTRUCTURAS MÓVILES
+            # 2.5 ALINEAR, DIFERENCIAR Y RENOMBRAR ESTRUCTURAS MÓVILES
             # =======================================================
             moving_rtstruct = self.moving_rtstruct_selector.currentNode()
 
@@ -1314,10 +1498,18 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     moving_rtstruct.SetName(parent_name + "_REGISTERED")
 
             # =======================================================
-            # 3. MAGIA UX: Asignación al Paso 2
+            # 3. MAGIA UX: Asignación al Paso 2 (Panel Resampled)
             # =======================================================
             self.dose_a_selector.setCurrentNode(aligned_dose_node)
             self.dose_b_selector.setCurrentNode(fixed_dose)
+
+            # NUEVO: Guardamos los nodos de boost remuestreados en la memoria interna (Invisibles en UI)
+            self._hidden_boost_a_node = aligned_boost_node
+
+            self._hidden_boost_b_node = None
+            if hasattr(self, 'fixed_boost_dose_selector') and hasattr(self, 'boost_b_checkbox'):
+                if self.boost_b_checkbox.isChecked():
+                    self._hidden_boost_b_node = self.fixed_boost_dose_selector.currentNode()
 
             # Restaurar la estructura que el usuario estaba visualizando
             if estructura_visualizacion_activa:
@@ -1325,12 +1517,13 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             slicer.util.showStatusMessage("Registration and Dose resampling completed!")
             slicer.util.infoDisplay(
-                "Successful alignment.\n\nLook for the new Dose volume with the suffix '_Resampled' in your Base Dose (RT1) list to perform the calculation.",
+                "Successful alignment.\n\nLook for the new Dose volumes with the suffix '_Resampled' in your Base Dose (RT1) list to perform the calculation.",
                 windowTitle="RadReirradiation FastReg")
 
         except Exception as e:
             slicer.util.errorDisplay(f"Error during image registration:\n{str(e)}",
                                      windowTitle="RadReirradiation Error")
+
 
     def onRTStructSelected(self, node):
         """Conecta las estructuras a la tabla usando la visualización nativa de SlicerRT"""
@@ -1397,22 +1590,35 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.util.showStatusMessage("All structures are now hidden")
 
-    def onLoadStructuresForBiology(self):
-        # SEGURIDAD: Limpiar interfaz ANTES de hacer cualquier cálculo
-        self.resetResultsDisplay()
-        """Lee TODOS los sets de estructuras en la escena y genera la tabla solo con las visibles."""
-        # 1. Buscamos todos los nodos de segmentación en la escena en lugar de usar un solo selector
-        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+    def autoSelectLatestRTStruct(self):
+        """
+        Sincroniza el selector del Panel 2 con el RTSTRUCT del plan actual (Fijo)
+        determinado por el Panel 1, asegurando que los menús desplegables
+        estén actualizados mediante processEvents.
+        """
+        import slicer
 
+        # 1. Forzamos a la interfaz de Slicer a procesar las nuevas etiquetas de paciente
+        slicer.app.processEvents()
+
+        # 2. Tomamos el nodo que el Panel 1 ya identificó inteligentemente como el plan "CURRENT"
+        curr_node = self.fixed_rtstruct_selector.currentNode() if hasattr(self, 'fixed_rtstruct_selector') else None
+
+        # 3. Lo asignamos al Panel 2
+        if curr_node and hasattr(self, 'rtstruct_selector'):
+            self.rtstruct_selector.setCurrentNode(curr_node)
+
+    def onLoadStructuresForBiology(self):
+        self.resetResultsDisplay()
+
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
         if not segmentation_nodes:
             slicer.util.warningDisplay("No RTSTRUCTs found in the scene.")
             return
 
-        # Limpiamos la tabla en caso de que el usuario vuelva a presionar el botón
         self.bio_table.setRowCount(0)
         row = 0
 
-        # 2. Recorremos TODOS los sets de estructuras encontrados (Fijos, Móviles, etc.)
         for segmentation_node in segmentation_nodes:
             segmentation = segmentation_node.GetSegmentation()
             display_node = segmentation_node.GetDisplayNode()
@@ -1420,91 +1626,123 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if not display_node:
                 continue
 
-            # 3. Recorremos los órganos internos de este set específico
             for i in range(segmentation.GetNumberOfSegments()):
                 segment_id = segmentation.GetNthSegmentID(i)
 
-                # EL EMBUDO: Solo pasan las estructuras con el "ojito" encendido
                 if display_node.GetSegmentVisibility(segment_id):
                     segment_name = segmentation.GetSegment(segment_id).GetName()
-
                     self.bio_table.insertRow(row)
 
-                    # Columna 0: Nombre de la estructura (Solo lectura)
+                    # Columna 0: Nombre de la estructura
                     name_item = qt.QTableWidgetItem(segment_name)
                     name_item.setFlags(name_item.flags() & ~qt.Qt.ItemIsEditable)
                     self.bio_table.setItem(row, 0, name_item)
 
-                    # Columna 1: Menú de Rol (OAR / Tumor)
+                    # Columna 1: Menú de Rol
                     role_combo = qt.QComboBox()
                     role_combo.addItems(["OAR", "Tumor"])
                     role_combo.setStyleSheet("background-color: white; color: black;")
                     self.bio_table.setCellWidget(row, 1, role_combo)
 
-                    # Columna 2: Menú de Prioridad
+                    # Columna 2: Valor Alfa/Beta
+                    alpha_beta_spinbox = qt.QDoubleSpinBox()
+                    alpha_beta_spinbox.setDecimals(1)
+                    alpha_beta_spinbox.setRange(1.0, 30.0)
+                    alpha_beta_spinbox.setSingleStep(0.5)
+                    alpha_beta_spinbox.setValue(3.0)
+                    alpha_beta_spinbox.setStyleSheet("background-color: white; color: black;")
+                    self.bio_table.setCellWidget(row, 2, alpha_beta_spinbox)
+
+                    # Columna 3: Recuperación (%) (NUEVO)
+                    recovery_spinbox = qt.QSpinBox()
+                    recovery_spinbox.setRange(0, 100)
+                    recovery_spinbox.setSingleStep(10)  # Saltos de 10%
+                    recovery_spinbox.setSuffix(" %")
+                    recovery_spinbox.setValue(0)  # Clínicamente conservador por defecto
+                    recovery_spinbox.setStyleSheet("background-color: white; color: black;")
+                    self.bio_table.setCellWidget(row, 3, recovery_spinbox)
+
+                    # Columna 4: Menú de Prioridad (Antes era la 3)
                     priority_combo = qt.QComboBox()
                     priority_combo.addItems(["OAR", "Tumor"])
                     priority_combo.setStyleSheet("background-color: #ecf0f1; color: black;")
-                    self.bio_table.setCellWidget(row, 2, priority_combo)
+                    self.bio_table.setCellWidget(row, 4, priority_combo)
 
-                    # Conexión de señales para los estilos
+                    # Conexión dinámica (Ahora enviamos 4 widgets)
                     role_combo.connect("currentTextChanged(QString)",
-                                       lambda text, r_combo=role_combo, p_combo=priority_combo: self.onRoleStyleUpdate(
-                                           text, r_combo, p_combo))
-
+                                       lambda text, r_combo=role_combo, p_combo=priority_combo,
+                                              ab_spin=alpha_beta_spinbox, rec_spin=recovery_spinbox:
+                                       self.onRoleStyleUpdate(text, r_combo, p_combo, ab_spin, rec_spin))
                     row += 1
 
         if row > 0:
+            # Ajustar el ancho de las columnas para que se vea estético
+            self.bio_table.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+            self.bio_table.horizontalHeader().setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)
+            self.bio_table.horizontalHeader().setSectionResizeMode(2, qt.QHeaderView.ResizeToContents)
+            self.bio_table.horizontalHeader().setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)
+            self.bio_table.horizontalHeader().setSectionResizeMode(4, qt.QHeaderView.ResizeToContents)
             slicer.util.showStatusMessage(f"Success: {row} structures loaded for biological setup.")
         else:
-            slicer.util.warningDisplay(
-                "No visible structures found. Please turn on the 'eye' icon for at least one structure in your panels.")
-    def onRoleStyleUpdate(self, text, r_combo, p_combo):
-        """Actualiza visualmente los menús de rol y prioridad basado en la selección."""
-        if text == "Tumor":
-            # 1. Pintamos el menú de Rol
-            r_combo.setStyleSheet(
-                "background-color: #fdf2e9; color: #d35400; font-weight: bold;")  # Naranja/Rojizo suave con negrita
+            slicer.util.warningDisplay("No visible structures found. Please turn on the 'eye' icon.")
 
-            # 2. Ajustamos y pintamos el menú de Prioridad del mismo color
+    def onRoleStyleUpdate(self, text, r_combo, p_combo, ab_spinbox, rec_spinbox):
+        """Actualiza estilos, valores alfa/beta, recuperación y prioridades."""
+        if text == "Tumor":
+            # Ajustes Rol y Alfa/Beta
+            r_combo.setStyleSheet("background-color: #fdf2e9; color: #d35400; font-weight: bold;")
+            ab_spinbox.setValue(10.0)
+            ab_spinbox.setStyleSheet("background-color: #fdf2e9; color: #d35400; font-weight: bold;")
+
+            # Seguridad: Forzar recuperación a 0% para el tumor y bloquear casilla
+            rec_spinbox.setValue(0)
+            rec_spinbox.setEnabled(False)
+            rec_spinbox.setStyleSheet("background-color: #ecf0f1; color: #7f8c8d;")  # Tono gris deshabilitado
+
+            # Ajustes Prioridad
             p_combo.setCurrentText("OAR")
             p_combo.setStyleSheet("background-color: #fdf2e9; color: #d35400;")
         else:
-            # 1. Volvemos al estilo estándar para el menú de Rol
+            # Ajustes Rol y Alfa/Beta
             r_combo.setStyleSheet("background-color: white; color: black; font-weight: normal;")
+            ab_spinbox.setValue(3.0)
+            ab_spinbox.setStyleSheet("background-color: white; color: black; font-weight: normal;")
 
-            # 2. Volvemos al estilo estándar para el menú de Prioridad
+            # Habilitar recuperación para OARs
+            rec_spinbox.setEnabled(True)
+            rec_spinbox.setStyleSheet("background-color: white; color: black;")
+
+            # Ajustes Prioridad
             p_combo.setCurrentText("OAR")
             p_combo.setStyleSheet("background-color: #ecf0f1; color: black;")
 
     def getBiologicalConfiguration(self):
-        """
-        Lee la tabla biológica fila por fila y extrae las configuraciones.
-        Retorna un diccionario estructurado con los roles y prioridades.
-        """
+        """Extrae la configuración biológica completa fila por fila."""
         bio_config = {}
 
-        # Recorremos todas las filas que existan en la tabla
         for row in range(self.bio_table.rowCount):
-
-            # 1. Extraemos el Nombre de la Estructura (Columna 0)
             name_item = self.bio_table.item(row, 0)
             if not name_item:
                 continue
             structure_name = name_item.text()
 
-            # 2. Extraemos el Rol seleccionado (Columna 1)
+            # Extraer variables de las celdas
             role_widget = self.bio_table.cellWidget(row, 1)
-            # Por seguridad, si por alguna razón falla el widget, asumimos 'OAR'
-            role_selected = role_widget.currentText if role_widget else "OAR"
+            ab_widget = self.bio_table.cellWidget(row, 2)
+            rec_widget = self.bio_table.cellWidget(row, 3)  # <-- Nueva extracción
+            priority_widget = self.bio_table.cellWidget(row, 4)
 
-            # 3. Extraemos la Prioridad seleccionada (Columna 2)
-            priority_widget = self.bio_table.cellWidget(row, 2)
+            # Extraer texto/valores de los widgets
+            role_selected = role_widget.currentText if role_widget else "OAR"
+            alpha_beta_val = ab_widget.value if ab_widget else 3.0
+            recovery_percent = rec_widget.value if rec_widget else 0  # <-- Porcentaje (0 a 100)
             priority_selected = priority_widget.currentText if priority_widget else "OAR"
 
-            # 4. Guardamos los datos en nuestro diccionario maestro
+            # Guardar en el diccionario maestro
             bio_config[structure_name] = {
                 "role": role_selected,
+                "alpha_beta": alpha_beta_val,
+                "recovery_percent": recovery_percent,
                 "priority": priority_selected
             }
 
@@ -2289,7 +2527,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print(f"ÉXITO Ninja: {total_fractions} fracciones inyectadas para '{dose_node.GetName()}'.")
 
         except Exception as e:
-            pass  # Silencio absoluto ante errores
+                pass  # Silencio absoluto ante errores
 
     def onExportPdfClicked(self):
         """Recopila los datos del análisis, genera una plantilla HTML robusta y la exporta como PDF nativo mediante Qt."""
@@ -2297,6 +2535,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import datetime
         import os
         import slicer
+        import re
 
         # 1. Pedir al usuario dónde guardar el PDF
         default_name = f"RadReirradiation_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -2308,25 +2547,100 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.app.processEvents()
 
         # ==========================================
-        # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ (Tu código original)
+        # 2. RECOPILACIÓN DE DATOS DE LA INTERFAZ
         # ==========================================
         date_str = datetime.datetime.now().strftime("%B %d, %Y - %H:%M:%S")
 
-        # Nombres de archivos (Usando tus variables exactas)
         dose_a_node = self.dose_a_selector.currentNode() if hasattr(self, 'dose_a_selector') else None
         dose_b_node = self.dose_b_selector.currentNode() if hasattr(self, 'dose_b_selector') else None
 
         dose_a_name = dose_a_node.GetName() if dose_a_node else "N/A"
         dose_b_name = dose_b_node.GetName() if dose_b_node else "N/A"
 
-        # Intentar capturar el RTSTRUCT
         rtstruct_name = "N/A"
-        if hasattr(self, 'struct_selector') and self.struct_selector.currentNode():
-            rtstruct_name = self.struct_selector.currentNode().GetName()
+        if hasattr(self, 'rtstruct_selector') and self.rtstruct_selector.currentNode():
+            rtstruct_name = self.rtstruct_selector.currentNode().GetName()
 
-        registration_status = "Manual Alignment / Resampled" if "_Resampled" in dose_a_name or "_Resampled" in dose_b_name else "Native DICOM Coordinates"
+        # Identificar qué tipo de registro se utilizó validando el nombre del volumen
+        is_resampled = "_Resampled" in dose_a_name or "_Resampled" in dose_b_name
 
-        # Extracción de Paciente desde la dosis planificada (RT2)
+        # Leer el estado exacto de las casillas de la interfaz
+        is_manual_ui = self.manual_only_checkbox.isChecked() if hasattr(self, 'manual_only_checkbox') else False
+        is_affine = self.affine_checkbox.isChecked() if hasattr(self, 'affine_checkbox') else False
+        is_deformable = self.deformable_checkbox.isChecked() if hasattr(self, 'deformable_checkbox') else False
+
+        # Lógica de asignación para el reporte PDF
+        if is_resampled:
+            if is_manual_ui:
+                registration_status = "Manual Alignment & Resampled"
+            else:
+                if is_deformable:
+                    registration_status = "Auto-Registration (Deformable B-Spline) & Resampled"
+                elif is_affine:
+                    registration_status = "Auto-Registration (Affine) & Resampled"
+                else:
+                    registration_status = "Auto-Registration (Rigid) & Resampled"
+        else:
+            registration_status = "Native DICOM Coordinates"
+
+        # --- CORRECCIÓN LÓGICA: EXTRACCIÓN DE FECHAS Y CÁLCULO DE TIEMPO ---
+        date_rt1_str = "Unknown Date"
+        date_rt2_str = "Unknown Date"
+        elapsed_time_str = "N/A"
+
+        # Nueva expresión regular para capturar solo la fecha sin importar qué haya antes
+        if hasattr(self, 'rt1_groupBox'):
+            match = re.search(r'Date:\s*(\d{4}-\d{2}-\d{2})', self.rt1_groupBox.title)
+            if match: date_rt1_str = match.group(1).strip()
+
+        if hasattr(self, 'rt2_groupBox'):
+            match = re.search(r'Date:\s*(\d{4}-\d{2}-\d{2})', self.rt2_groupBox.title)
+            if match: date_rt2_str = match.group(1).strip()
+
+        # Calculamos los meses/días transcurridos automáticamente
+        try:
+            if date_rt1_str != "Unknown Date" and date_rt2_str != "Unknown Date":
+                d1 = datetime.datetime.strptime(date_rt1_str, "%Y-%m-%d")
+                d2 = datetime.datetime.strptime(date_rt2_str, "%Y-%m-%d")
+
+                delta = abs((d2 - d1).days)
+                months = delta // 30
+                if months > 0:
+                    elapsed_time_str = f"{months} months ({delta} days)"
+                else:
+                    elapsed_time_str = f"{delta} days"
+        except Exception as e:
+            pass
+
+            # --- NUEVO: EXTRACCIÓN DE PARÁMETROS DEL BOOST SECUENCIAL ---
+        boost_a_html = ""
+        boost_b_html = ""
+        frac_boost_a_html = ""
+        frac_boost_b_html = ""
+
+        # Comprobamos Boost RT1
+        if hasattr(self, 'boost_a_checkbox') and self.boost_a_checkbox.isChecked():
+            b_node = self.moving_boost_dose_selector.currentNode() if hasattr(self,
+                                                                              'moving_boost_dose_selector') else None
+            b_name = b_node.GetName() if b_node else "N/A"
+            b_frac = self.fractions_boost_a_spinbox.value if hasattr(self, 'fractions_boost_a_spinbox') else "N/A"
+
+            boost_a_html = f"<tr><td>Previous Boost Dose (RT1)</td><td>{b_name}</td></tr>"
+            frac_boost_a_html = f"<tr><td>Boost Fractions Delivered (RT1)</td><td>{b_frac}</td></tr>"
+            dose_a_name = f"{dose_a_name} (Base)"  # Aclaramos en el PDF que la primera es la base
+
+        # Comprobamos Boost RT2
+        if hasattr(self, 'boost_b_checkbox') and self.boost_b_checkbox.isChecked():
+            b_node2 = self.fixed_boost_dose_selector.currentNode() if hasattr(self,
+                                                                              'fixed_boost_dose_selector') else None
+            b_name2 = b_node2.GetName() if b_node2 else "N/A"
+            b_frac2 = self.fractions_boost_b_spinbox.value if hasattr(self, 'fractions_boost_b_spinbox') else "N/A"
+
+            boost_b_html = f"<tr><td>Planned Boost Dose (RT2)</td><td>{b_name2}</td></tr>"
+            frac_boost_b_html = f"<tr><td>Boost Fractions Planned (RT2)</td><td>{b_frac2}</td></tr>"
+            dose_b_name = f"{dose_b_name} (Base)"
+
+        # Extracción del nombre y ID del paciente
         patient_name = "Unknown Patient"
         patient_id = "Unknown ID"
         if dose_b_node:
@@ -2343,21 +2657,16 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             except:
                 pass
 
-        # Parámetros Biológicos
-        frac_a = self.fractions_a_spinbox.value
-        frac_b = self.fractions_b_spinbox.value
-        ab_oar = self.ab_spinbox.value
-        ab_tumor = self.ab_tumor_spinbox.value
-
-        # Recuperación Tisular
-        recovery_enabled = self.recovery_checkbox.isChecked()
-        recovery_months = self.months_spinbox.value if recovery_enabled else "N/A"
-        recovery_factor_str = "Applied" if recovery_enabled else "None (100% BED combination)"
+        # Parámetros de Fraccionamiento Base
+        frac_a = self.fractions_a_spinbox.value if hasattr(self, 'fractions_a_spinbox') else "N/A"
+        frac_b = self.fractions_b_spinbox.value if hasattr(self, 'fractions_b_spinbox') else "N/A"
 
         # Restricción Dmax
-        dmax_constraint = self.dmax_volume_spinbox.value
+        dmax_constraint = self.dmax_volume_spinbox.value if hasattr(self, 'dmax_volume_spinbox') else 0.03
 
-        # Recopilar datos de la tabla de métricas (Tu bucle funcional + Nuevas columnas)
+        # Extraer configuración biológica estructura por estructura
+        bio_config = self.getBiologicalConfiguration()
+
         table_html = ""
         rows = self.metrics_table.rowCount
         for row in range(rows):
@@ -2371,15 +2680,21 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             if not struct_name: continue
 
-            # Lógica extraída de tu tabla biológica
-            is_target = "PTV" in struct_name.upper() or "GTV" in struct_name.upper() or "CTV" in struct_name.upper()
-            assigned_role = "Target" if is_target else "OAR"
-            assigned_ab = f"{ab_tumor} Gy" if is_target else f"{ab_oar} Gy"
+            # Buscar los parámetros biológicos exactos de esta estructura
+            if struct_name in bio_config:
+                assigned_role = bio_config[struct_name]["role"]
+                assigned_ab = f"{bio_config[struct_name]['alpha_beta']} Gy"
+                assigned_rec = f"{bio_config[struct_name]['recovery_percent']} %"
+            else:
+                # Respaldo por si la estructura no estaba en la tabla biológica
+                assigned_role = "Unspecified"
+                assigned_ab = "3.0 Gy (Default)"
+                assigned_rec = "0 % (Default)"
 
-            table_html += f"<tr><td>{struct_name}</td><td>{assigned_role}</td><td>{assigned_ab}</td><td>{dmax_val}</td><td>{mean_val}</td></tr>"
+            table_html += f"<tr><td>{struct_name}</td><td>{assigned_role}</td><td>{assigned_ab}</td><td>{assigned_rec}</td><td>{dmax_val}</td><td>{mean_val}</td></tr>"
 
         # ==========================================
-        # 3. CONSTRUCCIÓN DE LA PLANTILLA HTML (Tu estilo seguro original)
+        # 3. CONSTRUCCIÓN DE LA PLANTILLA HTML
         # ==========================================
         html_content = f"""
         <html>
@@ -2388,7 +2703,7 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
                 h1 {{ color: #2c3e50; text-align: center; border-bottom: 2px solid #2980b9; padding-bottom: 10px; }}
                 h2 {{ color: #2980b9; margin-top: 20px; border-bottom: 1px solid #bdc3c7; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em; }}
                 th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
                 th {{ background-color: #f2f2f2; color: #333; font-weight: bold; }}
                 .meta-info {{ font-size: 0.9em; color: #7f8c8d; text-align: right; }}
@@ -2403,29 +2718,39 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 <tr><th>Parameter</th><th>Details</th></tr>
                 <tr><td>Patient Name</td><td>{patient_name}</td></tr>
                 <tr><td>Patient ID</td><td>{patient_id}</td></tr>
+
                 <tr><td>Previous Dose (RT1)</td><td>{dose_a_name}</td></tr>
+                {boost_a_html}
+                <tr><td>Date of Previous Treatment</td><td>{date_rt1_str}</td></tr>
+
                 <tr><td>Planned Dose (RT2)</td><td>{dose_b_name}</td></tr>
+                {boost_b_html}
+                <tr><td>Date of Current Treatment</td><td>{date_rt2_str}</td></tr>
+
+                <tr style="background-color: #f8f9fa; font-weight: bold;">
+                    <td>Elapsed Time Between Treatments</td><td>{elapsed_time_str}</td>
+                </tr>
                 <tr><td>Structure Set (RTSTRUCT)</td><td>{rtstruct_name}</td></tr>
                 <tr><td>Registration Status</td><td>{registration_status}</td></tr>
             </table>
 
-            <h2>2. Biological & Fractionation Parameters</h2>
+            <h2>2. Fractionation Parameters</h2>
             <table>
                 <tr><th>Parameter</th><th>Value</th></tr>
-                <tr><td>Fractions (RT1 - Previous)</td><td>{frac_a}</td></tr>
-                <tr><td>Fractions (RT2 - Planned)</td><td>{frac_b}</td></tr>
-                <tr><td>Time-based Recovery Enabled</td><td>{'Yes' if recovery_enabled else 'No'}</td></tr>
-                <tr><td>Time Interval (Months)</td><td>{recovery_months}</td></tr>
-                <tr><td>Discount Factor Applied</td><td>{recovery_factor_str}</td></tr>
+                <tr><td>Fractions Delivered (RT1)</td><td>{frac_a}</td></tr>
+                {frac_boost_a_html}
+                <tr><td>Fractions Planned (RT2)</td><td>{frac_b}</td></tr>
+                {frac_boost_b_html}
             </table>
 
-            <h2>3. EQD2 Cumulative Dosimetric Metrics</h2>
+            <h2>3. EQD2 Cumulative Dosimetric Metrics & Biology</h2>
             <p><strong>DMax Volume Constraint:</strong> {dmax_constraint} cc</p>
             <table>
                 <tr>
                     <th>Structure Name</th>
                     <th>Biological Role</th>
-                    <th>&alpha;/&beta; Used</th>
+                    <th>&alpha;/&beta; Ratio</th>
+                    <th>Recovery Applied</th>
                     <th>DMax (Gy)</th>
                     <th>Mean Dose (Gy)</th>
                 </tr>
@@ -2434,8 +2759,9 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             <br><br>
             <p style="text-align:center; font-size: 0.8em; color: #7f8c8d;">
-                * This report is generated by RadReirradiation for 3D Slicer.<br>
-                * Please review all EQD2 and BED summations clinically before use.
+    - This report is generated by RadReirradiation for 3D Slicer.<br>
+    - Voxel-based radiobiology and overlap priorities were applied during EQD2 accumulation.<br>
+    - Please review all EQD2 and BED summations clinically before use.
             </p>
         </body>
         </html>
@@ -2452,7 +2778,6 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             printer.setOutputFormat(qt.QPrinter.PdfFormat)
             printer.setOutputFileName(save_path)
 
-            # Ajustes de página
             printer.setPageSize(qt.QPageSize(qt.QPageSize.A4))
             printer.setPageMargins(qt.QMarginsF(15, 15, 15, 15), qt.QPageLayout.Millimeter)
 
@@ -2463,6 +2788,8 @@ class RadReirradiationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to generate PDF:\n{str(e)}")
+
+
 # ==========================================================
 # 3. LÓGICA MATEMÁTICA (CEREBRO)
 # ==========================================================
@@ -2472,13 +2799,11 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
     def runFastRegistration(self, fixed_ct, moving_ct, moving_dose, fixed_dose, use_deformable=False, use_affine=False,
-                            manual_transform=None, use_manual_only=False):
+                            manual_transform=None, use_manual_only=False, moving_boost_dose=None):
         # ==========================================================
         # UX: INICIAR VENTANA DE CARGA Y CURSOR DE ESPERA
         # ==========================================================
-        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)  # Cambia el ratón a reloj de arena
-
-        # Creamos una barra de progreso "infinita" (maximum=0)
+        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
         progress = slicer.util.createProgressDialog(
             parent=slicer.util.mainWindow(),
             labelText="Calculating Image Registration......\nPlease wait, Slicer will appear frozen for a couple of minutes.",
@@ -2486,67 +2811,51 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             value=0, maximum=0
         )
         progress.show()
-        slicer.app.processEvents()  # Vital: Fuerza a Slicer a dibujar la ventana antes de congelarse
+        slicer.app.processEvents()
+
         try:
             # ==========================================================
-            # EL BYPASS: SI NO ES MODO MANUAL, EJECUTAMOS BRAINSFit
+            # 1 AL 6: EJECUTAR MOTOR DE REGISTRO (BRAINSFit)
             # ==========================================================
             final_transform = None
-            # Detectamos si el CT está enganchado al nodo de transformación
             is_manual_active = (manual_transform is not None) and (
                         moving_ct.GetParentTransformNode() == manual_transform)
 
             if not use_manual_only:
-
-
-                # 1. Crear el "recipiente" donde se guardará el resultado matemático de la fusión
                 transform_name = f"Transform_{moving_ct.GetName()}_to_{fixed_ct.GetName()}"
                 final_transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode", transform_name)
 
-                # 2. Configurar el tipo de transformación dinámicamente según la interfaz
-                fases_registro = ["Rigid"]  # Rígido siempre es obligatorio como base
-
+                fases_registro = ["Rigid"]
                 if use_affine:
                     fases_registro.append("Affine")
-
                 if use_deformable:
                     fases_registro.append("BSpline")
 
-                # Unir las palabras con comas (Ej: "Rigid,BSpline" si Affine está apagado)
                 t_types = ",".join(fases_registro)
-
                 tasa_muestreo = 0.01 if use_deformable else 0.02
 
-                # 3. Diccionario de Parámetros de BRAINSFit con "Balance Clínico"
                 parameters = {
                     "fixedVolume": fixed_ct.GetID(),
                     "movingVolume": moving_ct.GetID(),
                     "transformType": t_types,
                     "maskProcessingMode": "NOMASK",
-                    "samplingPercentage": tasa_muestreo,  # 2% de los píxeles (Estándar comercial para velocidad/precisión)
-                    "numberOfIterations": 500,  # Límite de intentos para evitar ciclos infinitos
-                    "minimumStepLength": 0.005,  # Detenerse temprano si el "match" óseo ya es perfecto
+                    "samplingPercentage": tasa_muestreo,
+                    "numberOfIterations": 500,
+                    "minimumStepLength": 0.005,
                 }
 
-                # 4. El Puente: ¿El usuario ajustó las barras manuales?
-                # Si el usuario movió las barras, inyectamos esa matriz inicial sin duplicarla.
-                # Si no, usamos el centrado geométrico automático.
                 if is_manual_active:
                     parameters["initialTransform"] = manual_transform.GetID()
                     parameters["initializeTransformMode"] = "Off"
                 else:
                     parameters["initializeTransformMode"] = "useGeometryAlign"
 
-                # 5. Decirle al motor de registro DÓNDE GUARDAR el resultado
                 if use_deformable:
                     parameters["bsplineTransform"] = final_transform.GetID()
                     parameters["splineGridSize"] = [5, 5, 5]
                 else:
                     parameters["linearTransform"] = final_transform.GetID()
 
-                # ==========================================================
-                # 6. EJECUTAR EL MOTOR DE REGISTRO DE IMÁGENES (BRAINSFit)
-                # ==========================================================
                 brainsFit = slicer.modules.brainsfit
                 cliNode = slicer.cli.runSync(brainsFit, None, parameters)
 
@@ -2554,122 +2863,268 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
                     raise ValueError("The image registration engine (BRAINSFit) failed.")
 
             # ==========================================================
-            # 7. MOVER LA DOSIS ANTIGUA (BRAINSResample)
-            # (ESTO SE EJECUTA SIEMPRE, YA SEA MANUAL O AUTOMÁTICO)
+            # 7. MOVER LA DOSIS BASE (BRAINSResample)
             # ==========================================================
-            # Preparar un volumen clonado vacío para recibir la nueva dosis deformada
-            output_dose_name = f"{moving_dose.GetName()}_Resampled"
-            volumesLogic = slicer.modules.volumes.logic()
+            if moving_boost_dose:
+                output_dose_name = f"{moving_dose.GetName()}_With_Boost_Resampled"
+            else:
+                output_dose_name = f"{moving_dose.GetName()}_Resampled"
 
+            volumesLogic = slicer.modules.volumes.logic()
             reference_volume = fixed_dose if fixed_dose else fixed_ct
 
             outputDose = volumesLogic.CloneVolume(slicer.mrmlScene, reference_volume, output_dose_name)
             outputDose.SetAttribute("DICOM.Modality", "RTDOSE")
 
-            # Configurar el motor de re-muestreo pasándole el final_transform obtenido arriba
             resample_params = {
                 "inputVolume": moving_dose.GetID(),
                 "referenceVolume": reference_volume.GetID(),
                 "outputVolume": outputDose.GetID(),
-              #  "warpTransform": final_transform.GetID(),  # Aplicar el mismo movimiento de los huesos a la dosis
                 "interpolationMode": "Linear",
                 "pixelType": "float"
             }
 
-            # INYECCIÓN MATEMÁTICA: Si se usó Auto-Registro, le pasamos el cálculo final
-            # Si se eligió Solo Manual, le pasamos los movimientos de las barras directamente a la Dosis
             if not use_manual_only and final_transform:
                 resample_params["warpTransform"] = final_transform.GetID()
             elif use_manual_only and is_manual_active:
                 resample_params["warpTransform"] = manual_transform.GetID()
 
             cliNodeResample = slicer.cli.runSync(slicer.modules.brainsresample, None, resample_params)
-
             if cliNodeResample.GetStatus() & cliNodeResample.ErrorsMask:
                 raise ValueError("The Dose resample (BRAINSResample) failed.")
 
             # ==========================================================
+            # 7.5. MOVER LA DOSIS BOOST SI EXISTE (El mismo movimiento)
+            # ==========================================================
+            outputBoostDose = None
+            if moving_boost_dose:
+                boost_name = f"{moving_boost_dose.GetName()}_Resampled"
+                outputBoostDose = volumesLogic.CloneVolume(slicer.mrmlScene, reference_volume, boost_name)
+                outputBoostDose.SetAttribute("DICOM.Modality", "RTDOSE")
+
+                resample_boost_params = {
+                    "inputVolume": moving_boost_dose.GetID(),
+                    "referenceVolume": reference_volume.GetID(),
+                    "outputVolume": outputBoostDose.GetID(),
+                    "interpolationMode": "Linear",
+                    "pixelType": "float"
+                }
+
+                # Aplicamos exactamente la misma matriz de deformación
+                if not use_manual_only and final_transform:
+                    resample_boost_params["warpTransform"] = final_transform.GetID()
+                elif use_manual_only and is_manual_active:
+                    resample_boost_params["warpTransform"] = manual_transform.GetID()
+
+                cliNodeBoost = slicer.cli.runSync(slicer.modules.brainsresample, None, resample_boost_params)
+                if cliNodeBoost.GetStatus() & cliNodeBoost.ErrorsMask:
+                    raise ValueError("The Boost Dose resample failed.")
+
+            # ==========================================================
             # 8. ACTUALIZAR LA PANTALLA
             # ==========================================================
-            # Enganchar el TAC Antiguo a la transformación final para que el usuario vea el resultado
             if not use_manual_only and final_transform:
                 moving_ct.SetAndObserveTransformNodeID(final_transform.GetID())
 
+            # Colocamos las imágenes en los visores
             slicer.util.setSliceViewerLayers(background=fixed_ct, foreground=moving_ct, foregroundOpacity=0.5)
 
+            # Forzar a Slicer a centrar la cámara y ajustar el zoom automáticamente
+            slicer.util.resetSliceViews()
+
             # ==========================================================
-            # 9. RETORNAR RESULTADOS A LA INTERFAZ (Dosis y Matriz)
+            # 9. RETORNAR RESULTADOS (Dosis Base, Matriz y Boost)
             # ==========================================================
-            # Evaluamos qué matriz de movimiento se usó realmente
-            # (la automática de BRAINSFit o la manual de las barras)
             applied_transform = final_transform if not use_manual_only else manual_transform
 
-            return outputDose, applied_transform
+            return outputDose, applied_transform, outputBoostDose
 
         finally:
-            # ==========================================================
-            # UX: RESTAURAR INTERFAZ (Incluso si hay un error)
-            # ==========================================================
             progress.close()
-            slicer.app.restoreOverrideCursor()  # Regresa el cursor a la normalidad
+            slicer.app.restoreOverrideCursor()
 
-    def procesarDosis(self, dose_a_node, dose_b_node, ab, fx_a, fx_b, use_recovery, months, custom_name=""):
+    def _getSegmentAndNode(self, structure_name):
+        """Busca en todos los RTSTRUCTs de la escena la estructura por su nombre."""
+        segmentation_nodes = list(slicer.util.getNodesByClass("vtkMRMLSegmentationNode"))
+        for node in segmentation_nodes:
+            segmentation = node.GetSegmentation()
+            segment_id = segmentation.GetSegmentIdBySegmentName(structure_name)
+            if segment_id:
+                return node, segment_id
+        return None, None
+
+    def procesarDosis(self, dose_a_node, dose_b_node, fx_a, fx_b, bio_config, custom_name="", boost_a_node=None,
+                      fx_boost_a=0, boost_b_node=None, fx_boost_b=0):
         import numpy as np
-
+        import vtk
+        import slicer
 
         # --- PASO A: Validaciones Clínicas ---
         if not dose_a_node or not dose_b_node:
             raise ValueError("Please select both dose matrices (RT1 y RT2).")
         if fx_a <= 0 or fx_b <= 0:
             raise ValueError("The number of fractions must be greater than zero.")
+        if not bio_config:
+            raise ValueError("Biological configuration is empty. Please generate the table in Panel 3.1.")
 
-        #  Validación matricial para Alpha/Beta
-        if np.any(ab <= 0):
-            raise ValueError("The Alpha/Beta values must be greater than zero.")
-
-        # --- PASO B: Extracción de Vóxeles ---
+        # --- PASO B: Extracción de Vóxeles Base ---
         array_a = slicer.util.arrayFromVolume(dose_a_node)
         array_b = slicer.util.arrayFromVolume(dose_b_node)
 
         if array_a.shape != array_b.shape:
             raise ValueError(
-                f"The Matrix dimensions do not match..\nDose RT1: {array_a.shape}\nDose RT2: {array_b.shape}\nYou must register and resample the images beforehand.")
+                f"The Matrix dimensions do not match.\nDose RT1: {array_a.shape}\nDose RT2: {array_b.shape}\nYou must register and resample the images beforehand.")
 
-        # --- PASO C: Matemática Radiobiológica ---
-        d_a = array_a / fx_a
-        d_b = array_b / fx_b
-        bed_a = array_a * (1.0 + (d_a / ab))
-        bed_b = array_b * (1.0 + (d_b / ab))
-        # bed_total = bed_a + bed_b
-        #  eqd2_total = bed_total * (ab / (2.0 + ab))
-        # --- Lógica de Recuperación (Misma de tu Streamlit) ---
-        recovery = 0.0
-        if use_recovery:
-            if months < 6:
-                recovery = 0.0
-            elif months < 12:
-                recovery = 0.25
-            elif months < 24:
-                recovery = 0.50
-            else:
-                recovery = 0.65
+        # ==========================================================
+        # Capturar el fondo actual (El CT) antes de que Slicer lo cambie
+        # ==========================================================
+        fondo_original = None
+        layoutManager = slicer.app.layoutManager()
+        if layoutManager:
+            red_logic = layoutManager.sliceWidget("Red").sliceLogic()
+            if red_logic.GetBackgroundLayer():
+                fondo_original = red_logic.GetBackgroundLayer().GetVolumeNode()
 
-        # Calculamos el BED efectivo restando la recuperación
-        effective_bed_a = bed_a * (1.0 - recovery)
+        # ==========================================================
+        # FASE 1: CREACIÓN DE LOS MAPAS BIOLÓGICOS (Lienzos)
+        # ==========================================================
+        slicer.util.showStatusMessage("Building 3D Biological Maps...")
+        slicer.app.processEvents()
 
-        # Sumamos el BED viejo con descuento + el BED nuevo
-        bed_total = effective_bed_a + bed_b
-        eqd2_total = bed_total * (ab / (2.0 + ab))
+        # Usamos -1.0 como marcador temporal para identificar "tejido no clasificado"
+        alpha_beta_map = np.full(array_a.shape, -1.0, dtype=np.float32)
+        recovery_map = np.full(array_a.shape, -1.0, dtype=np.float32)
+
+        # ==========================================================
+        # FASE 2: PINTADO DE MÁSCARAS Y RESOLUCIÓN DE CONFLICTOS
+        # ==========================================================
+        # Ordenamos las estructuras: Prioridad 'OAR' (0) se pinta primero, 'Tumor' (1) se pinta encima
+        sorted_structures = sorted(bio_config.items(), key=lambda item: 0 if item[1]["priority"] == "OAR" else 1)
+
+        for structure_name, config in sorted_structures:
+            ab_val = config["alpha_beta"]
+            rec_percent = config["recovery_percent"] / 100.0
+            priority = config["priority"]
+
+            seg_node, segment_id = self._getSegmentAndNode(structure_name)
+
+            if seg_node and segment_id:
+                # Creamos un lienzo en blanco exclusivo para ESTA estructura
+                temp_labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode",
+                                                                   f"Temp_Bio_Mask_{structure_name}")
+
+                # Proyección geométrica
+                segment_ids_array = vtk.vtkStringArray()
+                segment_ids_array.InsertNextValue(segment_id)
+                slicer.modules.segmentations.logic().ExportSegmentsToLabelmapNode(seg_node, segment_ids_array,
+                                                                                  temp_labelmap, dose_a_node)
+
+                # Máscara booleana aislada y exacta del órgano actual
+                mask = slicer.util.arrayFromVolume(temp_labelmap) > 0
+
+                if priority == "OAR":
+                    # Escenario A: El vóxel está "virgen" (-1.0). Lo pintamos directamente.
+                    blank_mask = mask & (alpha_beta_map == -1.0)
+                    alpha_beta_map[blank_mask] = ab_val
+                    recovery_map[blank_mask] = rec_percent
+
+                    # Escenario B: Solapamiento real con otro órgano ya pintado.
+                    overlap_mask = mask & (alpha_beta_map != -1.0)
+                    if np.any(overlap_mask):
+                        lower_ab_mask = overlap_mask & (ab_val < alpha_beta_map)
+                        alpha_beta_map[lower_ab_mask] = ab_val
+                        recovery_map[lower_ab_mask] = rec_percent
+                else:
+                    # Lógica para Tumores: Sobreescriben su área exacta sin afectar al resto
+                    alpha_beta_map[mask] = ab_val
+                    recovery_map[mask] = rec_percent
+
+                # Destruimos el lienzo inmediatamente para no contaminar la siguiente iteración
+                slicer.mrmlScene.RemoveNode(temp_labelmap)
+
+        # Llenado final de seguridad: Todo el tejido de fondo asume los valores estándar de tejido sano
+        unclassified_mask = (alpha_beta_map == -1.0)
+        alpha_beta_map[unclassified_mask] = 3.0
+        recovery_map[unclassified_mask] = 0.0
+
+        # ==========================================================
+        # FASE 3: MATEMÁTICA RADIOBIOLÓGICA CON BOOST SECUENCIAL
+        # ==========================================================
+        slicer.util.showStatusMessage("Calculating Voxel-Based EQD2 with Boost Support...")
+        slicer.app.processEvents()
+
+        # Función interna para remuestrear el Boost al tamaño exacto del plan Base
+        def resample_boost_to_base(boost_node, base_node, name):
+            resampled_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", name)
+            params = {
+                "inputVolume": boost_node.GetID(),
+                "referenceVolume": base_node.GetID(),
+                "outputVolume": resampled_node.GetID(),
+                "interpolationMode": "Linear",  # Interpolación lineal para dosis
+                "pixelType": "float"
+            }
+            # Ejecutamos el módulo en modo sincrónico (espera a que termine)
+            slicer.cli.runSync(slicer.modules.brainsresample, None, params)
+            return resampled_node
+
+        # Protegemos contra divisiones por cero
+        alpha_beta_map = np.clip(alpha_beta_map, 0.1, 30.0)
+
+        # --- 1. HISTORIA: RT1 (Base + Boost) ---
+        d_a_base = array_a / fx_a
+        bed_a_total = array_a * (1.0 + (d_a_base / alpha_beta_map))
+
+        if boost_a_node and fx_boost_a > 0:
+            slicer.util.showStatusMessage("Resampling RT1 Boost grid to match RT1 Base...")
+            slicer.app.processEvents()
+
+            temp_boost_a = resample_boost_to_base(boost_a_node, dose_a_node, "Temp_Boost_A")
+            array_boost_a = slicer.util.arrayFromVolume(temp_boost_a)
+
+            d_a_boost = array_boost_a / fx_boost_a
+            bed_boost_a = array_boost_a * (1.0 + (d_a_boost / alpha_beta_map))
+            bed_a_total = bed_a_total + bed_boost_a
+
+            # Limpieza de memoria
+            slicer.mrmlScene.RemoveNode(temp_boost_a)
+
+        # Calculamos el BED efectivo restando la recuperación vóxel a vóxel
+        effective_bed_a = bed_a_total * (1.0 - recovery_map)
+
+        # --- 2. PRESENTE: RT2 (Base + Boost) ---
+        d_b_base = array_b / fx_b
+        bed_b_total = array_b * (1.0 + (d_b_base / alpha_beta_map))
+
+        if boost_b_node and fx_boost_b > 0:
+            slicer.util.showStatusMessage("Resampling RT2 Boost grid to match RT2 Base...")
+            slicer.app.processEvents()
+
+            temp_boost_b = resample_boost_to_base(boost_b_node, dose_b_node, "Temp_Boost_B")
+            array_boost_b = slicer.util.arrayFromVolume(temp_boost_b)
+
+            d_b_boost = array_boost_b / fx_boost_b
+            bed_boost_b = array_boost_b * (1.0 + (d_b_boost / alpha_beta_map))
+            bed_b_total = bed_b_total + bed_boost_b
+
+            # Limpieza de memoria
+            slicer.mrmlScene.RemoveNode(temp_boost_b)
+
+        # --- 3. CONSOLIDACIÓN FINAL ---
+        bed_total = effective_bed_a + bed_b_total
+
+        # Convertimos de BED consolidado a EQD2
+        eqd2_total = bed_total * (alpha_beta_map / (2.0 + alpha_beta_map))
 
         # --- PASO D: Retorno a Slicer ---
-        volumesLogic = slicer.modules.volumes.logic()
-        # nuevo_nombre = f"RadReirradiation_EQD2_Acumulado_ab{int(ab)}"
+        slicer.util.showStatusMessage("Rendering clinical volumes...")
+        slicer.app.processEvents()
 
-        # Ajuste de nomenclatura para evitar errores de conversión de matrices
+        volumesLogic = slicer.modules.volumes.logic()
+
         if custom_name:
             nuevo_nombre = custom_name
         else:
-            nuevo_nombre = "RadReirradiation_EQD2_Accumulated_VoxelAB"
+            nuevo_nombre = "RadReirradiation_EQD2_VoxelBased"
 
         eqd2_node = volumesLogic.CloneVolume(slicer.mrmlScene, dose_a_node, nuevo_nombre)
         eqd2_node.SetAttribute("DICOM.Modality", "RTDOSE")
@@ -2678,29 +3133,23 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
         # ==========================================================
         # --- PASO E: AUTOMATIZACIÓN VISUAL (RECORTE CLÍNICO) ---
         # ==========================================================
-
-        # 1. Encontrar la "Dosis Clínica Máxima" (Ignorando la singularidad de braquiterapia)
         voxeles_con_dosis = eqd2_total[eqd2_total > 1.0]
         dosis_absoluta_max = np.max(eqd2_total)
 
         if len(voxeles_con_dosis) > 0:
             p99_5 = np.percentile(voxeles_con_dosis, 99.5)
-            # Añadimos un 10% de margen visual por encima del percentil
             dosis_maxima_visual = p99_5 * 1.1
-            # Límite de seguridad
             dosis_maxima_visual = min(dosis_maxima_visual, dosis_absoluta_max)
         else:
             dosis_maxima_visual = dosis_absoluta_max
 
         umbral_minimo = 2.0
 
-        # 2. Configurar el "Display Node" (el pintor de Slicer)
         display_node = eqd2_node.GetDisplayNode()
         if display_node is None:
             eqd2_node.CreateDefaultDisplayNodes()
             display_node = eqd2_node.GetDisplayNode()
 
-        # 3. CREAR MAPA DE COLORES (Standard 0 a 1)
         color_name = "Eclipse_Dose_Wash"
         color_node = slicer.mrmlScene.GetFirstNodeByName(color_name)
 
@@ -2710,38 +3159,41 @@ class RadReirradiationLogic(ScriptedLoadableModuleLogic):
             color_node.SetNumberOfColors(256)
 
             ctf = vtk.vtkColorTransferFunction()
-            ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)  # 0%   - Azul Oscuro
-            ctf.AddRGBPoint(0.25, 0.0, 0.8, 1.0)  # 25%  - Cyan
-            ctf.AddRGBPoint(0.50, 0.0, 1.0, 0.0)  # 50%  - Verde
-            ctf.AddRGBPoint(0.75, 1.0, 1.0, 0.0)  # 75%  - Amarillo
-            ctf.AddRGBPoint(0.90, 1.0, 0.5, 0.0)  # 90%  - Naranja
-            ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)  # 100% - Rojo
+            ctf.AddRGBPoint(0.00, 0.0, 0.0, 0.6)
+            ctf.AddRGBPoint(0.25, 0.0, 0.8, 1.0)
+            ctf.AddRGBPoint(0.50, 0.0, 1.0, 0.0)
+            ctf.AddRGBPoint(0.75, 1.0, 1.0, 0.0)
+            ctf.AddRGBPoint(0.90, 1.0, 0.5, 0.0)
+            ctf.AddRGBPoint(1.00, 1.0, 0.0, 0.0)
 
             for i in range(256):
                 r, g, b = ctf.GetColor(i / 255.0)
                 color_node.SetColor(i, str(i), r, g, b, 1.0)
 
         display_node.SetAndObserveColorNodeID(color_node.GetID())
-
-        # 4. Ajustar umbral: La leyenda y el gradiente van solo hasta el Límite Clínico
         display_node.SetAutoWindowLevel(False)
         display_node.SetWindowLevelMinMax(umbral_minimo, dosis_maxima_visual)
-
-        # Mantenemos el límite superior físico real para que el núcleo de braqui se pinte de rojo
         display_node.SetApplyThreshold(1)
         display_node.SetLowerThreshold(umbral_minimo)
         display_node.SetUpperThreshold(dosis_absoluta_max)
 
-        # 5. Inyectar mapa de calor
-        slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
+        # ==========================================================
+        # CORRECCIÓN DE CAPAS: Restaurar el CT original al fondo
+        # ==========================================================
+        if fondo_original:
+            # Colocamos explícitamente el CT original en el fondo y el EQD2 al frente
+            slicer.util.setSliceViewerLayers(background=fondo_original, foreground=eqd2_node, foregroundOpacity=0.4)
+        else:
+            # Respaldo por si no había nada de fondo
+            slicer.util.setSliceViewerLayers(foreground=eqd2_node, foregroundOpacity=0.4)
 
-        # 6. LEYENDA (SCALAR BAR)
         try:
             color_legend = slicer.modules.colors.logic().AddDefaultColorLegendDisplayNode(eqd2_node)
             color_legend.SetTitleText("Dose EQD2 (Gy)")
         except Exception as e:
             pass
 
+        slicer.util.showStatusMessage("EQD2 Voxel-Based calculation completed successfully!")
         return eqd2_node
 
 # ==========================================================
