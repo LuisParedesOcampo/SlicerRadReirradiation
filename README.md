@@ -6,34 +6,24 @@
 
 <img width="1919" height="701" alt="image" src="https://github.com/user-attachments/assets/8ca2476f-8099-419e-a42c-a3b2d6cb43af" />
 
-## 🚀 What's New in Version 2.1 (Workflow Update)
+## 🚀 What's New in Version 3.0 (Major Clinical Update)
 
-Version 2.1 introduces a massive quality-of-life update focused on clinical workflow automation, drastically reducing manual data assignment and preventing human error during DICOM handling.
+Version 3.0 represents a massive structural and clinical refactoring, upgrading the core algorithm to a true voxel-based radiobiology engine and introducing full support for sequential boost treatments.
 
-* **Smart DICOM Auto-Detection:** 1-click button that automatically scans the 3D Slicer database, identifies the loaded studies, and assigns the correct CTs, Doses, and RTSTRUCTs based on chronological order (`StudyDate`).
-* **Robust Data Isolation:** Introduced a custom internal tagging system (e.g., `PREV_CT`, `CURR_DOSE`) that strictly filters node selection, making it mathematically impossible to accidentally cross-assign previous data into the current plan spaces.
-* **Dynamic Clinical UI:** The interface now dynamically updates its headers to display the exact treatment dates for both RT1 (Previous) and RT2 (Current), assisting medical physicists in quick clinical timeline estimations.
-* **Multi-Patient Context Awareness:** If multiple patients are loaded in the Slicer scene, the module automatically prompts an interactive pop-up to select the target patient, isolating the workflow exclusively to their data.
-* **Multi-Study Resolution Dialog:** For patients with more than two treatment dates (e.g., multiple re-irradiations or intermediate control CTs), a custom dialog box allows the user to explicitly select which two dates to compare, defaulting to the oldest and newest.
-* **Global Scene Cleanup:** Automated backend memory clearance prevents attribute ghosting or data freezing when switching between different patients during the same session.
-* **Automated TPS DICOM Export (Eclipse Ready)** Export your accumulated EQD2 dose directly back to commercial TPS environments (like Varian Eclipse). The algorithm automatically traces the original DICOM metadata, generates a "shadow" RTPLAN, and bundles the original RTSTRUCT to ensure 100% compatibility upon import, bypassing standard TPS dose-lock restrictions.
-* **Clinical PDF Reporting** Generate comprehensive, print-ready PDF clinical reports directly within Slicer. The report automatically extracts patient metadata (Name, ID) from the DICOM hierarchy and logs all registration parameters, biological roles, temporal recovery factors, and cumulative dosimetric metrics (DMax, DMean) for legal and clinical traceability.
+-  **Voxel-Based Radiobiology Engine:** Upgraded the core mathematical engine to calculate EQD2 and BED on a strict voxel-by-voxel basis.
+- **Structure-Specific Parameters:** Alpha/beta (α/β) ratios and tissue recovery parameters can now be independently assigned per anatomical structure. Overlap conflicts between Target and OAR structures are automatically resolved using user-defined clinical priorities.
+- **Sequential Boost Integration:** Full clinical support for sequential boost plans. The system features automated geometric resampling for boost volumes with a built-in fail-safe dose selector to prevent base/boost assignment errors.
+- **Smart DICOM Loader:** The data import module now offers intelligent date-based automatic matching alongside a new "Manual Override" mode for complex datasets or single-day exports. It dynamically displays patient names and dates in the headers.
+- **Clinical Workflow UI:** The user interface has been entirely reorganized into 4 sequential panels that strictly mirror the medical physics clinical workflow.
+- **Advanced Clinical PDF Reports:** PDF generation dynamically extracts DICOM study dates, calculates the exact elapsed time between treatments, and seamlessly integrates sequential boost plan metrics for legal and clinical traceability.
 
-## Features 🚀
-* **Smart UI & Automation:** The module intelligently auto-selects aligned volumes and retrieves fraction data directly from the DICOM database.
-* **Absolute & Relative DVH:** Toggle between Relative Volume (%) and Absolute Volume (cc) directly on the generated Dose-Volume Histogram.
-* **Image Registration Wrapper:** Automated Rigid, Affine and Deformable (B-Spline) registration workflows using the BRAINSFit engine.
-* **Auto-Resampling Dose Engine:** Automatically resamples the moving dose grid to perfectly match the reference geometry, preventing matrix dimension errors.
-* **Time-Corrected Radiobiology:** Full support for standard LQ model (BED and EQD2) with temporal recovery factors (0 to 6+ months) for accurate reirradiation assessment.
-* **Voxel-by-Voxel Processing:** Operates directly on DICOM RTDOSE arrays using NumPy for high-performance biological conversion.
-* **"Eclipse-Style" Dose Wash:** Custom dynamic color map transition (Dark Blue to Red) with a 2 Gy threshold and 40% opacity.
-* **Clinical Safety First:** Automated UI resets and dynamic control locking ensure data integrity if configuration parameters are changed post-calculation.
-* **Dosimetric Analysis:** Metrics table (Dmax, Dmean) synchronized with structure visibility.
-* **DVH Generation:** Generation of interactive DVH curves within the Slicer.
-* **Hybrid Image Registration:** Choose between fully automatic Rigid/Deformable registration (powered by BRAINSFit) or highly precise Manual Alignment with 6 Degrees of Freedom (Translational & Rotational).
-* **Silent Metadata Tracking:** The module now utilizes advanced hierarchical attribute tracking to automatically locate the source `RTPLAN` of any selected `RTDOSE`. It silently extracts and populates the exact number of planned fractions, eliminating manual entry and reducing human error.
-* **Simultaneous Dual α/β Calculation:** Compute EQD2/BED using two distinct α/β ratios simultaneously in a single run, eliminating repetitive workflows when evaluating both tumor control and late tissue toxicity.
-* **Full 6-DOF Manual Control:** Precise translational (X, Y, Z) and rotational (Pitch, Roll, Yaw) sliders for perfect manual image alignment, equipped with a smart memory cache to ensure smooth rotations without origin-shift artifacts.
+## ✨ Key Features
+
+- **Hybrid Image Registration:** Choose between fully automatic Rigid, Affine, and Deformable (B-Spline) registration workflows (powered by BRAINSFit) or highly precise Manual Alignment with 6 Degrees of Freedom (Translational & Rotational).
+- **Auto-Resampling Dose Engine:** Automatically resamples the moving dose grids (both Base and Boost plans) to perfectly match the reference geometry, preventing matrix dimension errors.
+- **Absolute & Relative DVH:** Toggle between Relative Volume (%) and Absolute Volume (cc) directly on the generated Dose-Volume Histogram.
+- **"Eclipse-Style" Dose Wash:** Custom dynamic color map transition (Dark Blue to Red) with a 2 Gy threshold and 40% opacity that correctly overlays on the native CT background.
+- **Automated TPS DICOM Export (Eclipse Ready):** Export your accumulated EQD2 dose directly back to commercial TPS environments. The algorithm traces the original DICOM metadata, generates a "shadow" RTPLAN, and bundles the original RTSTRUCT to ensure 100% compatibility upon import.
 
 ## 📚 Scientific Foundation and References
 The development of RadReirradiation is based on international standards for reporting and accumulating biological doses.
@@ -107,7 +97,7 @@ covering the full reirradiation analysis workflow:
 > α/β = 10 Gy (tumor) without repeating the image 
 > registration — just change the parameter and click Calculate.
 
-## Step-by-step tutorial (v2.0)🛠️
+## Step-by-step tutorial (v3.0)🛠️
 
 
 **1. Data Preparation: From TPS to 3D Slicer**
@@ -117,10 +107,10 @@ To perform an accurate re-irradiation analysis, you must export two complete dat
 <img width="679" height="266" alt="0" src="https://github.com/user-attachments/assets/4493ec9f-dac8-485c-b845-ac161f34d67d" />
 
 Export Requirements (from your TPS):
-* CT Images (CT)
-* RT Doses (RD)
-* RT Structure Sets (RS)
-* Optional but recommended: RT Plans (RP)
+- CT Images (CT)
+- RT Doses (RD) *(Include Sequential Boost Doses if applicable)*
+- RT Structure Sets (RS)
+- RT Plan (RP)
 
 <img width="1182" height="581" alt="1" src="https://github.com/user-attachments/assets/4051c8e3-1dba-4cd6-8d44-8b48f292e470" />
 
@@ -128,27 +118,20 @@ Succesfull exportation of the previous treatmet, repeat the same steps for the c
 
 <img width="1187" height="577" alt="2" src="https://github.com/user-attachments/assets/35867a76-7435-4e8c-b387-591fc5b4e4d0" />
 
-
 **Importing into 3D Slicer:**
 
 Ensure you have the SlicerRT extension installed. It is a mandatory requirement to read and process Radiotherapy DICOM files. Drag and drop your exported DICOM folders into the 3D Slicer application or use the native DICOM Browser and click on Examine button.
 
 <img width="1202" height="772" alt="3" src="https://github.com/user-attachments/assets/c8e57085-13bf-4b7d-af89-d7e2dae9fa4e" />
 
-Once the DICOM files are loaded only check the TAC, RD and RS of the previous and current treatmets, click on Load button. RP is optional; it is not used in this version but will be used in future developments. 
+Once the DICOM files are loaded only check the TAC, RD and RS of the previous and current treatmets, click on Load button. Is not necessary load the the RP plans (the algorithm extracts the number of fractions from RP Plans without the need to load them). 
 <img width="1915" height="1006" alt="LOAD DATA" src="https://github.com/user-attachments/assets/f5d0f31f-3503-4d56-af19-47d86d661bb8" />
  
-Crucial Steps: When the DICOM import window appears, ensure the "eye" icon next to your RT Structures is toggled ON (visible). If this icon is closed, the structures will not be loaded into the scene and the DVH cannot be evaluated.
-
-Data Organization Tip:
-Since TPS exports often generate generic names (In this example, the RTDOSE files in both treatmets have the same name), it is highly recommended to rename your loaded volumes immediately (e.g., rename them to CT_Previous, CT_Current, Dose_Previous, Dose_Current). This will prevent confusion when assigning volumes in the RadReirradiation module.
-<img width="1881" height="984" alt="6" src="https://github.com/user-attachments/assets/fe9bea1a-5ed5-43a5-8bde-c243d972ddac" />
-<img width="1130" height="285" alt="7" src="https://github.com/user-attachments/assets/58de03d2-7cf9-46bb-9243-8ed392857d68" />
-
+Crucial Steps: When the DICOM import window appears, ensure the "eye" icon next to your RT Structures is toggled ON (visible). If this icon is closed, the structures will not be loaded into the scene and the Biological Role and DVH cannot be evaluated.
 
 **2. Launching RadReirradiation**
 
-Once your DICOM data is properly imported and organized in 3D Slicer, it is time to load it into the extension to coregister the previous treatment with the current patient anatomy.
+Once your DICOM data is properly imported and organized in 3D Slicer, it is time to load it into the Radreirradiation extension.
 
 Launching the Module:
 
@@ -157,19 +140,34 @@ Launching the Module:
 
 <img width="892" height="792" alt="Launch radreirradiation" src="https://github.com/user-attachments/assets/ec05b60a-cbfc-47c1-ac00-4a78673e0f7f" />
 
-
-
 **RadReirradiation**  has 4 important modules, which are:
 
-1. Load Reirradiation data and image registration with Dose resample.
-2. Structures visualization and Biolgical Role (important for the DVH analysis).
-3. Reirradiation calculation settings.
-4. Metrics an DVH results.
+1. Load Reirradiation data.
+2. Image registration with Dose resample.
+3. Structures visualization and Biolgical configurations and EQD2 calculation
+4. EQD2 Metrics, DVH Analysis, PDF Report and Export Dicom.
      
-<img width="522" height="492" alt="modulos" src="https://github.com/user-attachments/assets/11b8481e-085e-4deb-89d7-4a32fb99f6c7" />
+<img width="709" height="414" alt="MODULOS" src="https://github.com/user-attachments/assets/16c53463-0b2f-40e5-925b-52c087180354" />
 
+**2. Panel 1: Load Reirradiation Data**
 
+Launch the **RadReirradiation** module. Use the **Load Data: Auto-match (by date)** button to automatically scan the DICOM database, identify the loaded patient, and assign the correct CTs, Doses, and RTSTRUCTs based on chronological order. 
+- If multiple treatment dates are detected, a dialog will prompt you to select the dates to compare. 
+- If your TPS exported the data on the exact same date, use the **Manual-match** button to bypass the strict date filter.
+- **Sequential Boosts:** If either plan includes a boost, check the *Add Sequential Boost* box. A fail-safe mechanism ensures you manually assign the Base Dose and Boost Dose to prevent clinical swapping errors.
+  
+<img width="638" height="535" alt="LOAD DATA" src="https://github.com/user-attachments/assets/245f0880-b254-454f-8c92-274c16ab7b7d" />
+
+While the **Auto-match (by date)** algorithm is designed to handle 95% of standard clinical workflows, the **Manual-match** mode acts as a critical fail-safe. It temporarily removes the strict DICOM chronological filters, allowing the medical physicist to freely assign any loaded volume to any specific role.
+
+**When to use Manual-match:**
+- **Auto-match Failure or Misassignment:** If the algorithm fails to group the CT, RTDOSE, and RTSTRUCT correctly due to missing, corrupted, or anonymized DICOM metadata (e.g., stripped `StudyDate` tags).
+- **Same-Day Consolidations:** When the Treatment Planning System (TPS) exports both the historical dose and the current plan under the exact same date and timestamp, making chronological sorting impossible.
+- **Complex Multi-Plan Scenarios:** When dealing with multiple sum plans, composite doses, or comparative evaluations where the user needs absolute, granular control over which specific dose matrix is assigned to RT1 (Previous) or RT2 (Current).
+- **External Data Imports:** When importing imaging or dose matrices from third-party software (like synthetic CTs or external Monte Carlo dose engines) that do not conform to standard TPS DICOM hierarchy trees.
 **Assigning Volumes:**
+  
+<img width="635" height="539" alt="manual load" src="https://github.com/user-attachments/assets/7939ab9b-5ee4-4270-b10c-4eb5137d95fd" />
 
 In the Data Selection panel, carefully assign your loaded volumes to their corresponding roles:
 * Moving CT / Previous CT: The historical anatomy that needs to be registered.
@@ -179,10 +177,12 @@ In the Data Selection panel, carefully assign your loaded volumes to their corre
 * RTDOSE Current/planned Treatment.
 * RTSTRUCT : Structures from the current treatment
 
-<img width="502" height="253" alt="ASIGNACION" src="https://github.com/user-attachments/assets/49747c39-dea2-4050-9cce-5fad4eee3d02" />
+**Data Organization Tip for Manual-match:**
+Since TPS exports often generate generic names (In this example, the RTDOSE files in both treatmets have the same name), it is highly recommended to rename your loaded volumes immediately (e.g., rename them to CT_Previous, CT_Current, Dose_Previous, Dose_Current). This will prevent confusion when assigning volumes in the RadReirradiation module.
+<img width="1881" height="984" alt="6" src="https://github.com/user-attachments/assets/fe9bea1a-5ed5-43a5-8bde-c243d972ddac" />
+<img width="1130" height="285" alt="7" src="https://github.com/user-attachments/assets/58de03d2-7cf9-46bb-9243-8ed392857d68" />
 
-
-**Pre-Alignment and Image Registration with Dose resample:**
+**3. Panel 2: Pre-Alignment, Image Registration and Dose Resample**
 
 Before computing any biological dose, both CTs must be spatially aligned. Click the "Auto-Center CTs" button. This will automatically match the mathematical centers of both image sets, providing an excellent starting point.
 At this point, if all the structres are visible it is recommended to hide the structures to better visualize the Pre-Aligment and image Registration results. To do this, use module 2 (Structures visualization), and press the "Hide all structures" button.
