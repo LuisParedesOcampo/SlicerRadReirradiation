@@ -182,6 +182,7 @@ Since TPS exports often generate generic names (In this example, the RTDOSE file
 <img width="1881" height="984" alt="6" src="https://github.com/user-attachments/assets/fe9bea1a-5ed5-43a5-8bde-c243d972ddac" />
 <img width="1130" height="285" alt="7" src="https://github.com/user-attachments/assets/58de03d2-7cf9-46bb-9243-8ed392857d68" />
 
+
 **3. Panel 2: Pre-Alignment, Image Registration and Dose Resample**
 
 Before computing any biological dose, both CTs must be spatially aligned. Click the "Auto-Center CTs" button. This will automatically match the mathematical centers of both image sets, providing an excellent starting point.
@@ -218,71 +219,47 @@ After the registration is complete, it is highly recommended to perform a visual
 <img width="1886" height="873" alt="registration succesfull" src="https://github.com/user-attachments/assets/efbce12f-1568-4fa5-a7a7-97b9d5ff63ac" />
 
 
-**Structure Selection and Biological Role Assignment**
+**4. Panel 3: Structures Visualization, Biological Configuration and EQD2 Calculations**
 
 Once the image registration and dose resampling are complete, it is time to define the specific structures you want to evaluate for the re-irradiation summation.
 Visualizing the Target Structures:
-Navigate to Module 2 (Structures Visualization). You can choose to use either the Previous or the Current Structure Set (RTSTRUCT) from the dropdown menu. Expand the list and toggle the "eye" icon (visibility) ON only for the specific structures you wish to include in the dosimetric analysis (e.g., PTVs and critical OARs). The algorithm will solely process the structures that are visible in the scene.
+Navigate to Module 3 (Structures Visualization). You can choose to use either the Previous or the Current Structure Set (RTSTRUCT) from the dropdown menu. Expand the list and toggle the "eye" icon (visibility) ON only for the specific structures you wish to include in the dosimetric analysis (e.g., PTVs and critical OARs). The algorithm will solely process the structures that are visible in the scene.
 
-<img width="1910" height="936" alt="biological role2" src="https://github.com/user-attachments/assets/c84ab529-6ec4-477d-8a0c-fd54de6e7c99" />
+Click **Generate / Update Biological Roles Table**.
+For every visible structure, you must configure:
+- **Role & Priority (Tumor vs. OAR):** Dictates how overlapping voxels between targets and healthy tissues are mathematically resolved.
+- **Alpha/Beta (α/β) Ratio:** Specify the exact ratio for each structure.
+- **Recovery %:** Apply a time-discount factor (0% to 100%) for healthy tissues based on the elapsed time between treatments.
+- **Overlap Priority:** In clinical scenarios where a Target volume and an OAR overlap, you must dictate how those intersecting voxels are mathematically treated. You can choose whether the intersection behaves strictly as an OAR (conservative approach, prioritizing healthy tissue constraints) or as a Tumor (prioritizing target dose accumulation).
 
-Configuring the Biological Roles:
-After making your target structures visible, proceed to Panel 2.1 (Biological Configuration) and click the Generate / Update Biological Roles Table button. The module will automatically populate the table exclusively with your visible structures.
+<img width="1917" height="881" alt="BOLOGICAL TABLE 2" src="https://github.com/user-attachments/assets/4efd0e94-b9fd-4ada-825e-62c2cc202caa" />
 
-For each structure in the table, you must define two critical dosimetric parameters:
+Check the number of delivered/planned fractions for both the Base and Boost plans in Panel 1. Click **Calculate Cumulative EQD2 Dose**. The voxel-by-voxel LQ engine will compute the final biological dose and render an Eclipse-style color wash directly on the fixed CT.
 
-Role (Tumor vs. OAR): Assign whether the structure is a Target (Tumor) or an Organ At Risk (OAR). This dictates which specific Alpha/Beta (α/β) ratio the algorithm will apply to that volume during the voxel-by-voxel EQD2/BED conversion.
+<img width="1924" height="884" alt="eqd2 v2" src="https://github.com/user-attachments/assets/ec4e8240-452c-405d-9afa-99191412338f" />
 
-Overlap Priority: In clinical scenarios where a Target volume and an OAR overlap, you must dictate how those intersecting voxels are mathematically treated. You can choose whether the intersection behaves strictly as an OAR (conservative approach, prioritizing healthy tissue constraints) or as a Tumor (prioritizing target dose accumulation).
+**5. Panel 4: EQD2 Metrics, DVH, Export Dicom and PDF Report**
 
+- **Metrics Table:** Adjust the *DMax Volume Constraint* (e.g., 0.03 cc) and click **Calculate Metrics EQD2** to extract precise DMax and DMean values for all configured structures.
+- **DVH:** Click **Show DVH** to plot interactive Dose-Volume Histograms (toggle between relative % and absolute cc).
+- **Export:** 
+  - **Export EQD2 to DICOM:** Packages the accumulated dose into a standard RTDOSE file (with a shadow RTPLAN) for direct TPS import.
+  - **Export Clinical Report (PDF):** Generates a print-ready document containing patient metadata, elapsed time, biological configuration, and metric results for legal traceability.
 
-**3. Reirradiation Caulculation settings**
-
-With the CT images already registered, the extension streamlines your workflow. Thanks to the image registration algorithm, the newly registered and mapped Previous RT Dose (RD PREVIOUS_Resampled) is automatically loaded in the module, saving you manual steps and reducing setup errors.
-
-<img width="1814" height="925" alt="Reirradiation settings2" src="https://github.com/user-attachments/assets/3657c90e-b8ce-4fd7-ace2-676fd89fc131" />
-
-
-**Reirradiation Settings:**
-
-**Fractions:** Enter the number of delivered fractions for the previous treatment (RT1) and the planned fractions for the current treatment (RT2). (Note: If your RTDOSE was loaded with its corresponding RTPLAN, the module's DICOM tracker will automatically detect and populate these values for you).
-
-**Dual Alpha/Beta (α/β) Ratios:** The module now supports simultaneous dual biological summations. Enter both the α/β Ratio (OARs) (e.g., 3.0 Gy) and the α/β Ratio (Tumor) (e.g., 10.0 Gy). The algorithm evaluates each voxel and applies the correct ratio perfectly respecting the Roles and Overlap Priorities defined in your Biological Configuration table. You no longer need to run separate calculations for targets and healthy tissues.
-
-**Time-Discount Factor (Partial Recovery):** If you consider it necessary to apply a dose discount factor, enable the "Time-based Recovery" option. This feature accounts for the partial biological recovery of healthy tissues over time. Based on the selected elapsed time interval, the module applies a specific dose reduction factor to the previous treatment before the final summation (Note: These factors are based on *Nieder C, et al. Update of human spinal cord reirradiation tolerance based on additional data from 38 patients and provide a realistic biological estimation*):
-
-0 to 6 months: No recovery assumed. 0% discount is applied (100% of the previous dose is considered).
-
-6 to 12 months: Partial recovery assumed. A 25% discount factor is applied (75% of the previous dose is considered).
-
-12 to 24 months: Advanced recovery assumed. A 50% discount factor is applied (50% of the previous dose is considered).
-
-> 24 months: Prolonged recovery assumed. A 65% discount factor is applied (35% of the previous dose is considered).
-
-Click the Calculate Cumulative EQD2 Dose button.
-
-<img width="1911" height="928" alt="calculating EQD2 2" src="https://github.com/user-attachments/assets/6f2e51f0-cfe1-4fe4-a4f3-c6b7110a1138" />
-
-<img width="1911" height="925" alt="calculating EQD2 FINAL" src="https://github.com/user-attachments/assets/610fa803-4211-444e-aab0-52f3f51ff079" />
-
-**4 Visualizing the Results and DVH Analytics:**
-
-Once the cumulative EQD2 dose is calculated, you can instantly extract the dosimetric data for the structures you previously selected in the Biological Roles table.
 
 **Configurable DMax and Metrics Table:**
-
-<img width="1917" height="931" alt="DVH Y METRICAS" src="https://github.com/user-attachments/assets/c905dfb5-65a7-47f4-a2db-b22e41edc4f3" />
-
 Adjustable DMax Volume Constraint: Before calculating the metrics, you can specify the exact volume used to evaluate the Maximum Dose (DMax). Depending on your clinical protocol or the specific organ evaluated (e.g., spinal cord vs. bowel), you can select a true point dose (0 cc), a near-maximum dose (0.03 cc), or larger volumetric constraints (1 cc, 2 cc, up to 5 cc). Calculate Metrics: Click the calculate button to generate a detailed table displaying the Cumulative DMax and Cumulative Mean Dose (DMean) exclusively for the structures actively participating in your biological analysis.
 
-**Dose-Volume Histogram (DVH) Generation:**
-<img width="1918" height="932" alt="SOLO DVH" src="https://github.com/user-attachments/assets/3917eca8-0440-4db5-9959-956feaee0fa3" />
+<img width="704" height="581" alt="TABLA" src="https://github.com/user-attachments/assets/3355344c-ac1f-4771-9e35-84253d0e88bb" />
 
+
+**Dose-Volume Histogram (DVH) Generation:**
 To visually analyze the dose distribution, click the Generate DVH button. The module will plot interactive DVH curves for the accumulated EQD2 dose.
 Absolute vs. Relative Volume Toggle: You can easily switch the DVH Y-axis between Relative Volume (%) and Absolute Volume (cc). The algorithm extracts precise voxel spacing dimensions directly from the DICOM metadata, ensuring highly accurate volumetric rendering for your clinical constraints.
 
+<img width="1918" height="870" alt="dvh" src="https://github.com/user-attachments/assets/c92a811f-0cf7-4aec-b693-5509284a925e" />
 
-**5 Exporting Data and Clinical Reporting**
+**Exporting Data and Clinical Reporting**
 
 Once your metrics and DVH are generated and clinically validated, you can securely export the accumulated dose and analysis for your medical records and Treatment Planning System (TPS).
 
